@@ -42,9 +42,13 @@ def log(msg):
     print('[pipeline]', msg, flush=True)
 
 # ---------- LLM (mana-llm-gateway, API compatível Anthropic /v1/messages) ----------
+def _gw_headers():
+    return {'x-api-key': GW_KEY, 'Authorization': 'Bearer ' + GW_KEY,
+            'anthropic-version': '2023-06-01', 'content-type': 'application/json'}
+
 def llm(system, user, max_tokens=8000):
     r = requests.post(GW_URL + '/v1/messages',
-        headers={'x-api-key': GW_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+        headers=_gw_headers(),
         json={'model': MODEL, 'max_tokens': max_tokens, 'system': system,
               'messages': [{'role': 'user', 'content': user}]}, timeout=300)
     r.raise_for_status()
@@ -159,7 +163,7 @@ def chat(pergunta, historico):
           '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
     msgs = historico[-8:] + [{'role': 'user', 'content': pergunta}]
     r = requests.post(GW_URL + '/v1/messages',
-        headers={'x-api-key': GW_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+        headers=_gw_headers(),
         json={'model': MODEL, 'max_tokens': 3000, 'system': sys, 'messages': msgs}, timeout=180)
     r.raise_for_status()
     return ''.join(b.get('text', '') for b in r.json().get('content', []))
