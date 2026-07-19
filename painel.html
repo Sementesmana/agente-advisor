@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advisor Alfredo Soares</title>
+<style>
+:root{--bg:#0e0f11;--panel:#17181c;--panel2:#1e2026;--line:#2a2d35;--gold:#d4a437;--gold2:#f0c14b;--tx:#e8e6e1;--dim:#8b8e98;--green:#3fae6a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:26px 18px 90px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+.logo{width:46px;height:46px;border-radius:11px;background:linear-gradient(135deg,var(--gold),#8a6a1e);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;color:#111}
+h1{font-size:21px}h1 span{color:var(--gold)}
+.sub{color:var(--dim);font-size:12.5px;margin:0 0 18px 60px}
+nav{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+nav button{background:var(--panel);border:1px solid var(--line);color:var(--dim);padding:9px 18px;border-radius:9px;cursor:pointer;font-size:14px}
+nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:var(--gold)}
+.tab{display:none}.tab.on{display:block}
+.kan{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:14px}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px;min-height:160px}
+.col h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:9px;display:flex;justify-content:space-between}
+.col h3 em{font-style:normal;color:var(--gold2)}
+.vcard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:12px;line-height:1.35}
+.vcard a{color:var(--tx);text-decoration:none}.vcard a:hover{color:var(--gold2)}
+.vcard small{color:var(--dim)}
+.btn{background:var(--gold);color:#141414;font-weight:700;border:none;padding:11px 22px;border-radius:10px;cursor:pointer;font-size:14px}
+.btn:disabled{opacity:.45;cursor:wait}
+.note{color:var(--dim);font-size:12.5px;margin:10px 0}
+.logbox{background:#0a0b0d;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:monospace;font-size:12px;color:#9fdc9f;max-height:220px;overflow:auto;white-space:pre-wrap;margin-top:12px;display:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px;cursor:pointer}
+.tcard:hover{border-color:var(--gold)}
+.tcard h3{font-size:14px;margin-bottom:4px}.tcard small{color:var(--dim)}
+#mdview{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:20px 24px;line-height:1.6;font-size:13.5px;display:none}
+#mdview h1{font-size:19px;color:var(--gold2);margin-bottom:10px}
+#mdview h2{font-size:15px;color:var(--gold2);margin:16px 0 8px}
+#mdview p{margin:8px 0}#mdview b{color:var(--gold2)}
+#mdview a{color:var(--dim)}
+.back{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:6px 14px;cursor:pointer;margin-bottom:12px}
+#chatlog{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;min-height:120px}
+.msg{max-width:85%;padding:12px 16px;border-radius:13px;font-size:13.5px;line-height:1.55;white-space:pre-wrap}
+.msg.u{background:var(--gold);color:#141414;align-self:flex-end}
+.msg.a{background:var(--panel);border:1px solid var(--line);align-self:flex-start}
+.msg.a b{color:var(--gold2)}
+.chatrow{display:flex;gap:8px}
+.chatrow textarea{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--tx);font-size:14px;font-family:inherit;resize:vertical;min-height:52px}
+.warn{background:#3a2a20;border:1px solid #6a4a2a;color:#e8b87a;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
+</style></head><body><div class="wrap">
+<header><div class="logo">AS</div><h1>ADVISOR <span>ALFREDO SOARES</span></h1></header>
+<div class="sub">agente-advisor · Sementes Maná · pipeline + mente + conselheiro</div>
+<div class="warn" id="gw-warn">⚠ Gateway LLM não configurado (LLM_GATEWAY_URL / LLM_GATEWAY_KEY). O pipeline de síntese e o chat ficam indisponíveis até configurar as variáveis no Railway.</div>
+<nav><button class="on" data-t="t-pipe">Pipeline</button><button data-t="t-mente">A Mente</button><button data-t="t-chat">Advisor</button></nav>
+
+<div class="tab on" id="t-pipe">
+<button class="btn" id="proc">&#9654; Processar agora</button>
+<span class="note" id="proc-note">Roda: transcrever pendentes → sintetizar → consolidar a mente. O cron repete isso todo dia.</span>
+<div class="logbox" id="logbox"></div>
+<div class="kan" id="kanban"></div>
+</div>
+
+<div class="tab" id="t-mente">
+<div class="grid" id="tgrid"></div>
+<div id="mdwrap" style="display:none"><button class="back" onclick="fecharTopico()">&#8592; tópicos</button><div id="mdview"></div></div>
+</div>
+
+<div class="tab" id="t-chat">
+<div id="chatlog"><div class="msg a">E aí! Sou o teu advisor — estudei a fundo o método do Alfredo Soares. Me conta o desafio: modelo de negócio, vendas, canal, gente, escala... e já te devolvo com plano e a conta feita. Bora?</div></div>
+<div class="chatrow"><textarea id="q" placeholder="Ex.: como estruturo a rede de consultores da Maná pra vender mais soja premium?"></textarea><button class="btn" id="send">Enviar</button></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s); let HIST=[];
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');document.getElementById(b.dataset.t).classList.add('on');});
+const yt=id=>`https://www.youtube.com/watch?v=${id}`;
+function md2html(md){return md
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/^## (.+)$/gm,'<h2>$1</h2>')
+  .replace(/^> (.+)$/gm,'<p style="color:#8b8e98;font-style:italic">$1</p>')
+  .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+  .replace(/^- (.+)$/gm,'<p>• $1</p>')
+  .replace(/(https:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank">$1</a>')
+  .replace(/\n\n/g,'<br>');}
+async function estado(){
+  const d=await fetch('/api/estado').then(r=>r.json());
+  if(!d.gateway)$('#gw-warn').style.display='block';
+  const cols={pendente:[],transcrito:[],sintetizado:[],consolidado:[]};
+  d.videos.forEach(v=>cols[v.status].push(v));
+  $('#kanban').innerHTML=[['pendente','Pendente'],['transcrito','Transcrito'],['sintetizado','Sintetizado'],['consolidado','No cérebro']]
+    .map(([k,l])=>`<div class="col"><h3>${l} <em>${cols[k].length}</em></h3>`+
+      cols[k].map(v=>`<div class="vcard"><a href="${yt(v.id)}" target="_blank">${v.titulo}</a><br><small>${v.views||''}</small></div>`).join('')+'</div>').join('');
+  $('#tgrid').innerHTML=d.topics.map(t=>`<div class="tcard" onclick="abrirTopico('${t.slug}')"><h3>${t.title}</h3><small>${t.n} princípios</small></div>`).join('');
+  if(d.progresso.rodando||d.progresso.log.length){
+    $('#logbox').style.display='block';
+    $('#logbox').textContent=d.progresso.log.join('\n');
+    $('#proc').disabled=d.progresso.rodando;
+    if(d.progresso.rodando)setTimeout(estado,4000);
+  }
+}
+window.abrirTopico=async slug=>{
+  const d=await fetch('/api/mente/'+slug).then(r=>r.json());
+  $('#tgrid').style.display='none';$('#mdwrap').style.display='block';
+  $('#mdview').style.display='block';$('#mdview').innerHTML=md2html(d.md);window.scrollTo(0,0);};
+window.fecharTopico=()=>{$('#mdwrap').style.display='none';$('#tgrid').style.display='grid'};
+$('#proc').onclick=async()=>{$('#proc').disabled=true;await fetch('/api/processar',{method:'POST'});setTimeout(estado,1500);};
+async function enviar(){
+  const q=$('#q').value.trim();if(!q)return;
+  $('#q').value='';
+  $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg u"></div>`);
+  $('#chatlog').lastChild.textContent=q;
+  $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a">pensando...</div>`);
+  const el=$('#chatlog').lastChild;el.scrollIntoView();
+  try{
+    const d=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({pergunta:q,historico:HIST})}).then(r=>r.json());
+    if(d.erro){el.textContent='Erro: '+d.erro;return;}
+    el.innerHTML=md2html(d.resposta);
+    HIST.push({role:'user',content:q},{role:'assistant',content:d.resposta});HIST=HIST.slice(-8);
+  }catch(e){el.textContent='Erro de conexão: '+e;}
+  el.scrollIntoView();
+}
+$('#send').onclick=enviar;
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
+estado();
+</script>
+</div></body></html>
