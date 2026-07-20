@@ -8,7 +8,14 @@ import requests
 from flask import Flask, request, jsonify, Response
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(BASE, 'data')
+DATA = os.environ.get('DATA_DIR', os.path.join(BASE, 'data'))
+_SEED = os.path.join(BASE, 'data')
+# Volume persistente (Railway): se DATA_DIR aponta pra um volume vazio, semeia com o data/ do repo
+if DATA != _SEED and not os.path.exists(os.path.join(DATA, 'videos.json')):
+    import shutil
+    os.makedirs(DATA, exist_ok=True)
+    shutil.copytree(_SEED, DATA, dirs_exist_ok=True)
+    print('[boot] volume semeado a partir do repo', flush=True)
 GW_URL = os.environ.get('LLM_GATEWAY_URL', '').rstrip('/')
 GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
 MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')
