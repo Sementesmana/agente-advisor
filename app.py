@@ -74,15 +74,23 @@ def coletar():
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
     vs = json.loads(ler(p('videos.json')) or '[]')
     conhecidos = {v['id'] for v in vs}
-    novos = []
+    novos, feed_ids = [], []
     for e in entradas:  # feed vem do mais recente pro mais antigo
         vid = (re.search(r'<yt:videoId>([\w-]+)</yt:videoId>', e) or [None, None])[1]
         tit = (re.search(r'<title>([\s\S]*?)</title>', e) or [None, ''])[1]
         pub = (re.search(r'<published>([\d-]+)', e) or [None, ''])[1]
-        if vid and vid not in conhecidos:
+        if not vid: continue
+        feed_ids.append(vid)
+        if vid not in conhecidos:
             novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub})
-    if novos:
-        gravar(p('videos.json'), json.dumps(novos + vs, ensure_ascii=False, indent=1))
+        else:
+            for v in vs:
+                if v['id'] == vid and not v.get('data'): v['data'] = pub
+    vs = novos + vs
+    # espelha a recência do canal: quem está no feed sobe pro topo na ordem exata do YouTube
+    pos = {vid: i for i, vid in enumerate(feed_ids)}
+    vs.sort(key=lambda v: pos.get(v['id'], 10**6))  # estável: fora do feed mantém a ordem atual
+    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     log('Coletor: %d vídeo(s) novo(s) no canal' % len(novos))
     return len(novos)
 
