@@ -3,7 +3,7 @@
 Pipeline: coletar transcrição YouTube -> sintetizar (Claude via mana-llm-gateway) -> consolidar mente -> chat persona.
 Estado derivado do filesystem (data/): transcricoes/{id}.txt, sinteses/{id}.md, mente/{tema}.md, consolidado.json
 """
-import os, json, re, glob, threading, traceback
+import os, io, json, re, glob, threading, traceback
 import requests
 from flask import Flask, request, jsonify, Response
 
@@ -155,12 +155,40 @@ def processar():
     finally:
         PROGRESSO['rodando'] = False
 
+# ---------- CONTEXTO DA EMPRESA ----------
+def extrair_texto(nome, dados):
+    n = nome.lower()
+    if n.endswith('.pdf'):
+        from pypdf import PdfReader
+        return '\n'.join(pg.extract_text() or '' for pg in PdfReader(io.BytesIO(dados)).pages)
+    if n.endswith('.docx'):
+        import docx
+        d = docx.Document(io.BytesIO(dados))
+        partes = [par.text for par in d.paragraphs]
+        for t in d.tables:
+            for row in t.rows: partes.append(' | '.join(c.text for c in row.cells))
+        return '\n'.join(partes)
+    if n.endswith(('.html', '.htm')):
+        return re.sub(r'\s+', ' ', re.sub(r'<script[\s\S]*?</script>|<style[\s\S]*?</style>|<[^>]+>', ' ',
+                                          dados.decode('utf-8', 'ignore')))
+    return dados.decode('utf-8', 'ignore')
+
+def contexto_empresa():
+    partes = []
+    perfil = ler(p('contexto.md'))
+    if perfil: partes.append('PERFIL DA EMPRESA (escrito pelo dono):\n' + perfil)
+    for f in sorted(glob.glob(p('contexto', '*.txt'))):
+        partes.append('DOCUMENTO [%s]:\n%s' % (os.path.basename(f)[:-4], ler(f)[:30000]))
+    return ('\n\n'.join(partes))[:120000]
+
 # ---------- 4 PERSONA / CHAT ----------
 def chat(pergunta, historico):
     persona = ler(p('mente', 'persona.md'))
     mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(p('mente', '*.md'))) if not f.endswith('persona.md'))
+    ctx = contexto_empresa()
     sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
-          '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
+          (('\n\n=== CONTEXTO DA EMPRESA DO USUÁRIO ===\n' + ctx) if ctx else '') + \
+          '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Use o contexto da empresa quando existir — a orientação deve ser específica pro negócio do usuário. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
     msgs = historico[-8:] + [{'role': 'user', 'content': pergunta}]
     r = requests.post(GW_URL + '/v1/messages',
         headers=_gw_headers(),
@@ -189,6 +217,45 @@ def api_mente(slug):
 @app.route('/api/processar', methods=['POST'])
 def api_processar():
     threading.Thread(target=processar, daemon=True).start()
+    return jsonify({'ok': True})
+
+@app.route('/api/contexto', methods=['GET', 'POST'])
+def api_contexto():
+    if request.method == 'POST':
+        gravar(p('contexto.md'), request.get_json(force=True).get('perfil', ''))
+        return jsonify({'ok': True})
+    docs = [{'nome': os.path.basename(f)[:-4], 'chars': len(ler(f))} for f in sorted(glob.glob(p('contexto', '*.txt')))]
+    return jsonify({'perfil': ler(p('contexto.md')), 'docs': docs})
+
+@app.route('/api/contexto/upload', methods=['POST'])
+def api_ctx_upload():
+    f = request.files.get('arquivo')
+    if not f: return jsonify({'erro': 'sem arquivo'}), 400
+    dados = f.read()
+    if len(dados) > 15 * 1024 * 1024: return jsonify({'erro': 'máx 15MB'}), 400
+    try: txt = extrair_texto(f.filename, dados)
+    except Exception as e: return jsonify({'erro': 'falha ao extrair: %s' % e}), 400
+    nome = re.sub(r'[^\w.-]+', '_', os.path.splitext(f.filename)[0])[:60]
+    gravar(p('contexto', nome + '.txt'), txt.strip())
+    return jsonify({'ok': True, 'nome': nome, 'chars': len(txt)})
+
+@app.route('/api/contexto/url', methods=['POST'])
+def api_ctx_url():
+    url = request.get_json(force=True).get('url', '').strip()
+    if not url.startswith('http'): return jsonify({'erro': 'URL inválida'}), 400
+    try:
+        r = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+        txt = extrair_texto('pagina.html', r.content)
+    except Exception as e: return jsonify({'erro': 'falha ao buscar: %s' % e}), 400
+    nome = 'site_' + re.sub(r'[^\w.-]+', '_', re.sub(r'^https?://', '', url))[:60]
+    gravar(p('contexto', nome + '.txt'), (url + '\n' + txt).strip())
+    return jsonify({'ok': True, 'nome': nome, 'chars': len(txt)})
+
+@app.route('/api/contexto/doc/<nome>', methods=['DELETE'])
+def api_ctx_del(nome):
+    if not re.match(r'^[\w.-]+$', nome): return ('', 404)
+    f = p('contexto', nome + '.txt')
+    if os.path.exists(f): os.remove(f)
     return jsonify({'ok': True})
 
 @app.route('/api/chat', methods=['POST'])
