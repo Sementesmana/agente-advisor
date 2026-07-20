@@ -52,6 +52,7 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <div class="tab on" id="t-pipe">
 <button class="btn" id="buscar" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--gold)">&#8635; Buscar vídeos novos</button>
 <button class="btn" id="proc">&#9654; Processar fila</button>
+<button class="btn" id="abort" style="background:#8a2a2a;color:#fff;display:none">&#9632; Abortar</button>
 <span class="note" id="proc-note">Buscar = atualiza a coluna Pendente com os mais recentes do canal (você prioriza e manda com ▶). Processar fila = roda todos os pendentes na ordem. Cron diário só busca os novos.</span>
 <div class="logbox" id="logbox"></div>
 <div class="kan" id="kanban"></div>
@@ -112,6 +113,7 @@ async function estado(){
     $('#proc').disabled=d.progresso.rodando;
     if(d.progresso.rodando)setTimeout(estado,4000);
   }
+  $('#abort').style.display=d.progresso.rodando?'inline-block':'none';
 }
 window.abrirTopico=async slug=>{
   const d=await fetch('/api/mente/'+slug).then(r=>r.json());
@@ -119,6 +121,7 @@ window.abrirTopico=async slug=>{
   $('#mdview').style.display='block';$('#mdview').innerHTML=md2html(d.md);window.scrollTo(0,0);};
 window.fecharTopico=()=>{$('#mdwrap').style.display='none';$('#tgrid').style.display='grid'};
 $('#proc').onclick=async()=>{$('#proc').disabled=true;await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});setTimeout(estado,1500);};
+$('#abort').onclick=async()=>{$('#abort').disabled=true;await fetch('/api/abortar',{method:'POST'});setTimeout(()=>{$('#abort').disabled=false;estado();},1500);};
 window.procUm=async id=>{await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:[id]})});setTimeout(estado,1200);};
 $('#buscar').onclick=async()=>{
   $('#buscar').disabled=true;

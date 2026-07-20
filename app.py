@@ -19,7 +19,7 @@ TAXONOMIA = ['modelo-de-negocio','vendas-e-ofertas','marketing-de-influencia','c
              'networking-e-conexoes','branding-e-posicionamento']
 
 app = Flask(__name__)
-PROGRESSO = {'rodando': False, 'log': []}
+PROGRESSO = {'rodando': False, 'log': [], 'abortar': False}
 
 def p(*a): return os.path.join(DATA, *a)
 def ler(path): return open(path, encoding='utf-8').read() if os.path.exists(path) else ''
@@ -163,13 +163,15 @@ def consolidar(tema, novos_ids):
 # ---------- PIPELINE ----------
 def processar(ids=None):
     if PROGRESSO['rodando']: return
-    PROGRESSO['rodando'] = True; PROGRESSO['log'] = []
+    PROGRESSO['rodando'] = True; PROGRESSO['log'] = []; PROGRESSO['abortar'] = False
     try:
         if not ids:
             try: coletar()
             except Exception as e: log('Coletor falhou (segue com a fila atual): %s' % e)
         temas_novos = {}  # tema -> [video ids]
         for v in videos():
+            if PROGRESSO['abortar']:
+                log('⛔ Abortado pelo usuário — o que já foi sintetizado consolida na próxima rodada.'); break
             if ids and v['id'] not in ids: continue
             try:
                 if v['status'] == 'pendente':
@@ -192,7 +194,9 @@ def processar(ids=None):
                         if t in TAXONOMIA: temas_novos.setdefault(t, []).append(v['id'])
             except Exception as e:
                 log('ERRO %s: %s' % (v['id'], e))
+        if PROGRESSO['abortar']: temas_novos = {}
         for tema, ids in temas_novos.items():
+            if PROGRESSO['abortar']: break
             log('Consolidando tópico: ' + tema)
             try: consolidar(tema, ids)
             except Exception as e: log('ERRO consolidação %s: %s' % (tema, e)); continue
@@ -263,6 +267,11 @@ def api_estado():
 def api_mente(slug):
     if not re.match(r'^[\w-]+$', slug): return ('', 404)
     return jsonify({'md': ler(p('mente', slug + '.md'))})
+
+@app.route('/api/abortar', methods=['POST'])
+def api_abortar():
+    PROGRESSO['abortar'] = True
+    return jsonify({'ok': True})
 
 @app.route('/api/coletar', methods=['POST'])
 def api_coletar():
