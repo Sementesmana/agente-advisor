@@ -21,6 +21,8 @@ GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
 MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')
 CRON_HORA = int(os.environ.get('CRON_HORA', '7'))  # BRT
 YT_CHANNEL_ID = os.environ.get('YT_CHANNEL_ID', 'UCh9HMS4C3F02msM-kiilAdA')  # @canaldoalfredosoares
+PROXY_URL = os.environ.get('PROXY_URL', '')  # proxy residencial p/ YouTube (http://user:pass@host:porta)
+PROXIES = {'http': PROXY_URL, 'https': PROXY_URL} if PROXY_URL else None
 TAXONOMIA = ['modelo-de-negocio','vendas-e-ofertas','marketing-de-influencia','canais-e-varejo',
              'conteudo-e-audiencia','gestao-e-pessoas','mentalidade-empreendedora',
              'networking-e-conexoes','branding-e-posicionamento']
@@ -76,7 +78,7 @@ def ignorar(vid, motivo):
 def coletar():
     """Busca os vídeos mais recentes do canal via RSS oficial e adiciona os novos ao topo da fila."""
     r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + YT_CHANNEL_ID,
-                     timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+                     timeout=30, headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
     r.raise_for_status()
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
     vs = json.loads(ler(p('videos.json')) or '[]')
@@ -116,6 +118,7 @@ def transcrever(vid):
 def _transcrever_1x(vid):
     """Legenda automática via innertube (client ANDROID). Levanta exceção se bloqueado/sem legenda."""
     s = requests.Session()
+    if PROXIES: s.proxies = PROXIES
     s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
     j = s.post('https://www.youtube.com/youtubei/v1/player', json={
         'context': {'client': {'clientName': 'ANDROID', 'clientVersion': '20.10.38',
