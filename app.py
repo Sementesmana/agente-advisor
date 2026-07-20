@@ -102,6 +102,18 @@ def coletar():
     return len(novos)
 
 def transcrever(vid):
+    """3 tentativas com pausa — o YouTube bloqueia IP de datacenter de forma intermitente."""
+    import time
+    ult = None
+    for _ in range(3):
+        try:
+            return _transcrever_1x(vid)
+        except RuntimeError as e:
+            if str(e) == 'CURTO': raise
+            ult = e; time.sleep(10)
+    raise ult
+
+def _transcrever_1x(vid):
     """Legenda automática via innertube (client ANDROID). Levanta exceção se bloqueado/sem legenda."""
     s = requests.Session()
     s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
