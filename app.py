@@ -287,6 +287,25 @@ def api_mente(slug):
     if not re.match(r'^[\w-]+$', slug): return ('', 404)
     return jsonify({'md': ler(p('mente', slug + '.md'))})
 
+@app.route('/api/transcricao', methods=['POST', 'OPTIONS'])
+def api_transcricao():
+    """Plano B: recebe transcrição extraída no navegador do usuário (quando o YouTube bloqueia o IP do servidor)."""
+    resp_headers = {'Access-Control-Allow-Origin': 'https://www.youtube.com',
+                    'Access-Control-Allow-Methods': 'POST',
+                    'Access-Control-Allow-Headers': 'content-type'}
+    if request.method == 'OPTIONS':
+        return Response('', headers=resp_headers)
+    d = request.get_json(force=True)
+    vid, txt = d.get('id', ''), (d.get('texto', '') or '').strip()
+    if not re.match(r'^[\w-]{11}$', vid): return jsonify({'erro': 'id inválido'}), 400
+    if len(txt) < 2500:
+        ignorar(vid, 'curto/short via navegador')
+        return jsonify({'ok': True, 'ignorado': True}, ), 200, resp_headers
+    vs = {v['id']: v for v in json.loads(ler(p('videos.json')) or '[]')}
+    tit = vs.get(vid, {}).get('titulo', vid)
+    gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
+    return jsonify({'ok': True, 'chars': len(txt)}), 200, resp_headers
+
 @app.route('/api/abortar', methods=['POST'])
 def api_abortar():
     PROGRESSO['abortar'] = True
