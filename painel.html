@@ -100,7 +100,10 @@ async function estado(){
   d.videos.forEach(v=>cols[v.status].push(v));
   $('#kanban').innerHTML=[['pendente','Pendente'],['transcrito','Transcrito'],['sintetizado','Sintetizado'],['consolidado','No cérebro']]
     .map(([k,l])=>`<div class="col"><h3>${l} <em>${cols[k].length}</em></h3>`+
-      cols[k].map(v=>`<div class="vcard"><a href="${yt(v.id)}" target="_blank">${v.titulo}</a><br><small>${v.views||''}</small></div>`).join('')+'</div>').join('');
+      cols[k].map(v=>k==='pendente'
+        ?`<div class="vcard pend" draggable="true" data-id="${v.id}" style="cursor:grab"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><a href="${yt(v.id)}" target="_blank">${v.titulo}</a><button title="Processar só este vídeo" onclick="procUm('${v.id}')" style="background:var(--gold);color:#141414;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;flex-shrink:0">&#9654;</button></div><small>${v.views||''} ${v.views?'·':''} arraste pra priorizar</small></div>`
+        :`<div class="vcard"><a href="${yt(v.id)}" target="_blank">${v.titulo}</a><br><small>${v.views||''}</small></div>`).join('')+'</div>').join('');
+  bindDnD();
   $('#tgrid').innerHTML=d.topics.map(t=>`<div class="tcard" onclick="abrirTopico('${t.slug}')"><h3>${t.title}</h3><small>${t.n} princípios</small></div>`).join('');
   if(d.progresso.rodando||d.progresso.log.length){
     $('#logbox').style.display='block';
@@ -114,7 +117,24 @@ window.abrirTopico=async slug=>{
   $('#tgrid').style.display='none';$('#mdwrap').style.display='block';
   $('#mdview').style.display='block';$('#mdview').innerHTML=md2html(d.md);window.scrollTo(0,0);};
 window.fecharTopico=()=>{$('#mdwrap').style.display='none';$('#tgrid').style.display='grid'};
-$('#proc').onclick=async()=>{$('#proc').disabled=true;await fetch('/api/processar',{method:'POST'});setTimeout(estado,1500);};
+$('#proc').onclick=async()=>{$('#proc').disabled=true;await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});setTimeout(estado,1500);};
+window.procUm=async id=>{await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:[id]})});setTimeout(estado,1200);};
+let dragId=null;
+function bindDnD(){
+  document.querySelectorAll('#kanban .vcard.pend').forEach(c=>{
+    c.ondragstart=()=>{dragId=c.dataset.id};
+    c.ondragover=e=>e.preventDefault();
+    c.ondrop=e=>{e.preventDefault();
+      if(!dragId||dragId===c.dataset.id)return;
+      const col=c.parentElement, drag=col.querySelector(`[data-id="${dragId}"]`);
+      if(drag)col.insertBefore(drag,c);
+      dragId=null;salvarOrdem();};
+  });
+}
+async function salvarOrdem(){
+  const ids=[...document.querySelectorAll('#kanban .vcard.pend')].map(c=>c.dataset.id);
+  await fetch('/api/ordem',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
+}
 async function enviar(){
   const q=$('#q').value.trim();if(!q)return;
   $('#q').value='';

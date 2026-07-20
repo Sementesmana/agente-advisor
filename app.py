@@ -153,14 +153,16 @@ def consolidar(tema, novos_ids):
     gravar(p('mente', tema + '.md'), md.strip())
 
 # ---------- PIPELINE ----------
-def processar():
+def processar(ids=None):
     if PROGRESSO['rodando']: return
     PROGRESSO['rodando'] = True; PROGRESSO['log'] = []
     try:
-        try: coletar()
-        except Exception as e: log('Coletor falhou (segue com a fila atual): %s' % e)
+        if not ids:
+            try: coletar()
+            except Exception as e: log('Coletor falhou (segue com a fila atual): %s' % e)
         temas_novos = {}  # tema -> [video ids]
         for v in videos():
+            if ids and v['id'] not in ids: continue
             try:
                 if v['status'] == 'pendente':
                     log('Transcrevendo: ' + v['titulo'][:60])
@@ -256,7 +258,17 @@ def api_mente(slug):
 
 @app.route('/api/processar', methods=['POST'])
 def api_processar():
-    threading.Thread(target=processar, daemon=True).start()
+    ids = (request.get_json(silent=True) or {}).get('ids')
+    threading.Thread(target=processar, args=(ids,), daemon=True).start()
+    return jsonify({'ok': True})
+
+@app.route('/api/ordem', methods=['POST'])
+def api_ordem():
+    ids = (request.get_json(force=True) or {}).get('ids', [])
+    pos = {vid: i for i, vid in enumerate(ids)}
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs.sort(key=lambda v: pos.get(v['id'], 10**6))  # sort estável: não listados mantêm ordem
+    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True})
 
 @app.route('/api/contexto', methods=['GET', 'POST'])
