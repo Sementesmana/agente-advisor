@@ -13,6 +13,7 @@ GW_URL = os.environ.get('LLM_GATEWAY_URL', '').rstrip('/')
 GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
 MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')
 CRON_HORA = int(os.environ.get('CRON_HORA', '7'))  # BRT
+YT_CHANNEL_ID = os.environ.get('YT_CHANNEL_ID', 'UCh9HMS4C3F02msM-kiilAdA')  # @canaldoalfredosoares
 TAXONOMIA = ['modelo-de-negocio','vendas-e-ofertas','marketing-de-influencia','canais-e-varejo',
              'conteudo-e-audiencia','gestao-e-pessoas','mentalidade-empreendedora',
              'networking-e-conexoes','branding-e-posicionamento']
@@ -28,6 +29,8 @@ def gravar(path, txt):
 
 def videos():
     vs = json.loads(ler(p('videos.json')) or '[]')
+    ign = set(json.loads(ler(p('ignorados.json')) or '[]'))
+    vs = [v for v in vs if v['id'] not in ign]
     cons = set(json.loads(ler(p('consolidado.json')) or '[]'))
     for v in vs:
         if v['id'] in cons: v['status'] = 'consolidado'
@@ -55,6 +58,34 @@ def llm(system, user, max_tokens=8000):
     return ''.join(b.get('text', '') for b in r.json().get('content', []))
 
 # ---------- 1 COLETOR (determinístico) ----------
+import html as _html
+
+def ignorar(vid, motivo):
+    ign = json.loads(ler(p('ignorados.json')) or '[]')
+    if vid not in ign:
+        ign.append(vid); gravar(p('ignorados.json'), json.dumps(ign))
+    log('Ignorado %s (%s)' % (vid, motivo))
+
+def coletar():
+    """Busca os vídeos mais recentes do canal via RSS oficial e adiciona os novos ao topo da fila."""
+    r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + YT_CHANNEL_ID,
+                     timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+    r.raise_for_status()
+    entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    conhecidos = {v['id'] for v in vs}
+    novos = []
+    for e in entradas:  # feed vem do mais recente pro mais antigo
+        vid = (re.search(r'<yt:videoId>([\w-]+)</yt:videoId>', e) or [None, None])[1]
+        tit = (re.search(r'<title>([\s\S]*?)</title>', e) or [None, ''])[1]
+        pub = (re.search(r'<published>([\d-]+)', e) or [None, ''])[1]
+        if vid and vid not in conhecidos:
+            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub})
+    if novos:
+        gravar(p('videos.json'), json.dumps(novos + vs, ensure_ascii=False, indent=1))
+    log('Coletor: %d vídeo(s) novo(s) no canal' % len(novos))
+    return len(novos)
+
 def transcrever(vid):
     """Legenda automática via innertube (client ANDROID). Levanta exceção se bloqueado/sem legenda."""
     s = requests.Session()
@@ -65,12 +96,14 @@ def transcrever(vid):
         'videoId': vid}, timeout=60).json()
     tracks = (j.get('captions', {}).get('playerCaptionsTracklistRenderer', {}).get('captionTracks', []))
     tr = next((t for t in tracks if t.get('languageCode', '').startswith('pt')), tracks[0] if tracks else None)
-    if not tr: raise RuntimeError('sem legenda disponível (ou YouTube bloqueou o datacenter)')
+    if not tr: raise RuntimeError('SEM_LEGENDA')
+    dur = int(j.get('videoDetails', {}).get('lengthSeconds', 0) or 0)
+    if 0 < dur < 240: raise RuntimeError('CURTO')  # shorts/teasers não entram no cérebro
     xml = s.get(tr['baseUrl'], timeout=60).text
     dec = lambda x: x.replace('&amp;','&').replace('&lt;','<').replace('&gt;','>').replace('&#39;',"'").replace('&quot;','"')
     parts = [dec(re.sub(r'<[^>]+>', ' ', m.group(1))) for m in re.finditer(r'<(?:text|p)[^>]*>([\s\S]*?)</(?:text|p)>', xml)]
     txt = re.sub(r'\s+', ' ', ' '.join(parts)).strip()
-    if len(txt) < 500: raise RuntimeError('transcrição vazia/curta')
+    if len(txt) < 2500: raise RuntimeError('CURTO')
     return txt
 
 # ---------- 2 ANALISTA (probabilístico) ----------
@@ -124,12 +157,19 @@ def processar():
     if PROGRESSO['rodando']: return
     PROGRESSO['rodando'] = True; PROGRESSO['log'] = []
     try:
+        try: coletar()
+        except Exception as e: log('Coletor falhou (segue com a fila atual): %s' % e)
         temas_novos = {}  # tema -> [video ids]
         for v in videos():
             try:
                 if v['status'] == 'pendente':
                     log('Transcrevendo: ' + v['titulo'][:60])
-                    gravar(p('transcricoes', v['id'] + '.txt'), v['titulo'] + '\nhttps://www.youtube.com/watch?v=' + v['id'] + '\n' + transcrever(v['id']))
+                    try:
+                        txt = transcrever(v['id'])
+                    except RuntimeError as e:
+                        if str(e) == 'CURTO': ignorar(v['id'], 'curto/short'); continue
+                        raise
+                    gravar(p('transcricoes', v['id'] + '.txt'), v['titulo'] + '\nhttps://www.youtube.com/watch?v=' + v['id'] + '\n' + txt)
                     v['status'] = 'transcrito'
                 if v['status'] == 'transcrito':
                     log('Sintetizando: ' + v['titulo'][:60])
