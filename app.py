@@ -256,6 +256,14 @@ def api_mente(slug):
     if not re.match(r'^[\w-]+$', slug): return ('', 404)
     return jsonify({'md': ler(p('mente', slug + '.md'))})
 
+@app.route('/api/coletar', methods=['POST'])
+def api_coletar():
+    try:
+        n = coletar()
+        return jsonify({'ok': True, 'novos': n})
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
 @app.route('/api/processar', methods=['POST'])
 def api_processar():
     ids = (request.get_json(silent=True) or {}).get('ids')
@@ -325,8 +333,15 @@ def painel():
 # ---------- CRON ----------
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
+    def rotina_cron():
+        # padrão: só coleta os vídeos novos (você decide o que processar).
+        # CRON_AUTO=1 no Railway → processa a fila inteira automaticamente.
+        if os.environ.get('CRON_AUTO') == '1': processar()
+        else:
+            try: coletar()
+            except Exception as e: print('cron coletar:', e, flush=True)
     sched = BackgroundScheduler(timezone='America/Sao_Paulo')
-    sched.add_job(processar, 'cron', hour=CRON_HORA, minute=0)
+    sched.add_job(rotina_cron, 'cron', hour=CRON_HORA, minute=0)
     sched.start()
 except Exception as e:
     print('APScheduler não iniciado:', e)

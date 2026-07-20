@@ -50,8 +50,9 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <nav><button class="on" data-t="t-pipe">Pipeline</button><button data-t="t-mente">A Mente</button><button data-t="t-chat">Advisor</button><button data-t="t-ctx">Contexto</button></nav>
 
 <div class="tab on" id="t-pipe">
-<button class="btn" id="proc">&#9654; Processar agora</button>
-<span class="note" id="proc-note">Roda: transcrever pendentes → sintetizar → consolidar a mente. O cron repete isso todo dia.</span>
+<button class="btn" id="buscar" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--gold)">&#8635; Buscar vídeos novos</button>
+<button class="btn" id="proc">&#9654; Processar fila</button>
+<span class="note" id="proc-note">Buscar = atualiza a coluna Pendente com os mais recentes do canal (você prioriza e manda com ▶). Processar fila = roda todos os pendentes na ordem. Cron diário só busca os novos.</span>
 <div class="logbox" id="logbox"></div>
 <div class="kan" id="kanban"></div>
 </div>
@@ -119,6 +120,12 @@ window.abrirTopico=async slug=>{
 window.fecharTopico=()=>{$('#mdwrap').style.display='none';$('#tgrid').style.display='grid'};
 $('#proc').onclick=async()=>{$('#proc').disabled=true;await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});setTimeout(estado,1500);};
 window.procUm=async id=>{await fetch('/api/processar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:[id]})});setTimeout(estado,1200);};
+$('#buscar').onclick=async()=>{
+  $('#buscar').disabled=true;
+  const d=await fetch('/api/coletar',{method:'POST'}).then(r=>r.json()).catch(e=>({erro:String(e)}));
+  $('#buscar').disabled=false;
+  $('#proc-note').textContent=d.erro?('Erro ao buscar: '+d.erro):(d.novos+' vídeo(s) novo(s) adicionados no topo da coluna Pendente.');
+  estado();};
 let dragId=null;
 function bindDnD(){
   document.querySelectorAll('#kanban .vcard.pend').forEach(c=>{
