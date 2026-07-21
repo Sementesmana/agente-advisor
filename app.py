@@ -75,32 +75,62 @@ def ignorar(vid, motivo):
         ign.append(vid); gravar(p('ignorados.json'), json.dumps(ign))
     log('Ignorado %s (%s)' % (vid, motivo))
 
+def dur_seg(vid):
+    """Duração do vídeo em segundos (0 se não conseguir determinar → deixa passar)."""
+    try:
+        s = requests.Session()
+        if PROXIES: s.proxies = PROXIES
+        s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
+        j = s.post('https://www.youtube.com/youtubei/v1/player', json={
+            'context': {'client': {'clientName': 'ANDROID', 'clientVersion': '20.10.38',
+                                   'androidSdkVersion': 30, 'hl': 'pt', 'gl': 'BR'}},
+            'videoId': vid}, timeout=30).json()
+        return int(j.get('videoDetails', {}).get('lengthSeconds', 0) or 0)
+    except Exception:
+        return 0
+
 def coletar():
-    """Busca os vídeos mais recentes do canal via RSS oficial e adiciona os novos ao topo da fila."""
+    """Busca os mais recentes do canal, JÁ descarta shorts (<4min) e adiciona os novos ao topo."""
     r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + YT_CHANNEL_ID,
                      timeout=30, headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
     r.raise_for_status()
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
     vs = json.loads(ler(p('videos.json')) or '[]')
     conhecidos = {v['id'] for v in vs}
-    novos, feed_ids = [], []
+    novos, feed_ids, shorts = [], [], 0
     for e in entradas:  # feed vem do mais recente pro mais antigo
         vid = (re.search(r'<yt:videoId>([\w-]+)</yt:videoId>', e) or [None, None])[1]
         tit = (re.search(r'<title>([\s\S]*?)</title>', e) or [None, ''])[1]
         pub = (re.search(r'<published>([\d-]+)', e) or [None, ''])[1]
         if not vid: continue
-        feed_ids.append(vid)
         if vid not in conhecidos:
-            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub})
+            d = dur_seg(vid)
+            if 0 < d < 240:  # short/teaser: nem entra no pipeline
+                ignorar(vid, 'short %ds' % d); shorts += 1; continue
+            feed_ids.append(vid)
+            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub, 'dur': d})
         else:
+            feed_ids.append(vid)
             for v in vs:
                 if v['id'] == vid and not v.get('data'): v['data'] = pub
-    vs = novos + vs
-    # espelha a recência do canal: quem está no feed sobe pro topo na ordem exata do YouTube
+    # faxina: remove da fila shorts legados ainda não verificados (limite p/ não sobrecarregar)
+    limpos, checados = [], 0
+    for v in vs:
+        if v.get('status_no_cerebro') or v.get('dur') is not None or checados >= 40:
+            limpos.append(v); continue
+        if os.path.exists(p('sinteses', v['id'] + '.txt')) or os.path.exists(p('sinteses', v['id'] + '.md')):
+            limpos.append(v); continue
+        checados += 1
+        d = dur_seg(v['id']); v['dur'] = d
+        if 0 < d < 240:
+            ignorar(v['id'], 'short %ds (faxina)' % d); shorts += 1
+        else:
+            limpos.append(v)
+    vs = novos + limpos
     pos = {vid: i for i, vid in enumerate(feed_ids)}
-    vs.sort(key=lambda v: pos.get(v['id'], 10**6))  # estável: fora do feed mantém a ordem atual
+    vs.sort(key=lambda v: pos.get(v['id'], 10**6))
     gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
-    log('Coletor: %d vídeo(s) novo(s) no canal' % len(novos))
+    log('Coletor: %d novo(s), %d short(s) descartado(s)' % (len(novos), shorts))
     return len(novos)
 
 def transcrever(vid):
