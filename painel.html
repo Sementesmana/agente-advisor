@@ -51,6 +51,7 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 
 <div class="tab on" id="t-pipe">
 <button class="btn" id="buscar" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--gold)">&#8635; Buscar vídeos novos</button>
+<button class="btn" id="limpar" style="background:var(--panel2);color:#e8b87a;border:1px solid #6a4a2a">&#129529; Limpar shorts</button>
 <button class="btn" id="proc">&#9654; Processar fila</button>
 <button class="btn" id="abort" style="background:#8a2a2a;color:#fff;display:none">&#9632; Abortar</button>
 <span class="note" id="proc-note">Buscar = atualiza a coluna Pendente com os mais recentes do canal (você prioriza e manda com ▶). Processar fila = roda todos os pendentes na ordem. Cron diário só busca os novos.</span>
@@ -133,6 +134,7 @@ $('#buscar').onclick=async()=>{
   $('#buscar').disabled=false;
   $('#proc-note').textContent=d.erro?('Erro ao buscar: '+d.erro):(d.novos+' vídeo(s) novo(s) adicionados no topo da coluna Pendente.');
   estado();};
+$('#limpar').onclick=async()=>{$('#limpar').disabled=true;await fetch('/api/limpar-shorts',{method:'POST'});setTimeout(()=>{$('#limpar').disabled=false;estado();},1500);};
 let dragId=null;
 function bindDnD(){
   document.querySelectorAll('#kanban .vcard.pend').forEach(c=>{

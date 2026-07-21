@@ -90,50 +90,62 @@ def dur_seg(vid):
         return 0
 
 def coletar():
-    """Busca os mais recentes do canal, JÁ descarta shorts (<4min) e adiciona os novos ao topo."""
+    """Só RSS — rápido, traz todos os vídeos do canal pra fila (a limpeza de shorts é botão separado)."""
     r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + YT_CHANNEL_ID,
                      timeout=30, headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
     r.raise_for_status()
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
     vs = json.loads(ler(p('videos.json')) or '[]')
     conhecidos = {v['id'] for v in vs}
-    novos, feed_ids, shorts = [], [], 0
+    novos, feed_ids = [], []
     for e in entradas:  # feed vem do mais recente pro mais antigo
         vid = (re.search(r'<yt:videoId>([\w-]+)</yt:videoId>', e) or [None, None])[1]
         tit = (re.search(r'<title>([\s\S]*?)</title>', e) or [None, ''])[1]
         pub = (re.search(r'<published>([\d-]+)', e) or [None, ''])[1]
         if not vid: continue
+        feed_ids.append(vid)
         if vid not in conhecidos:
-            d = dur_seg(vid)
-            if 0 < d < 240:  # short/teaser: nem entra no pipeline
-                ignorar(vid, 'short %ds' % d); shorts += 1; continue
-            feed_ids.append(vid)
-            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub, 'dur': d})
+            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub})
         else:
-            feed_ids.append(vid)
             for v in vs:
                 if v['id'] == vid and not v.get('data'): v['data'] = pub
-    # faxina: remove da fila shorts legados ainda não verificados (limite p/ não sobrecarregar)
-    limpos, checados = [], 0
-    for v in vs:
-        if v.get('status_no_cerebro') or v.get('dur') is not None or checados >= 40:
-            limpos.append(v); continue
-        if os.path.exists(p('sinteses', v['id'] + '.txt')) or os.path.exists(p('sinteses', v['id'] + '.md')):
-            limpos.append(v); continue
-        checados += 1
-        d = dur_seg(v['id'])
-        if 0 < d < 240:
-            ignorar(v['id'], 'short %ds (faxina)' % d); shorts += 1
-        elif d >= 240:
-            v['dur'] = d; limpos.append(v)   # só marca quando leu de verdade
-        else:
-            limpos.append(v)                  # d==0 = falha/bloqueio: re-tenta na próxima
-    vs = novos + limpos
+    vs = novos + vs
     pos = {vid: i for i, vid in enumerate(feed_ids)}
     vs.sort(key=lambda v: pos.get(v['id'], 10**6))
     gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
-    log('Coletor: %d novo(s), %d short(s) descartado(s)' % (len(novos), shorts))
+    log('Coletor: %d vídeo(s) novo(s) no canal' % len(novos))
     return len(novos)
+
+def limpar_shorts():
+    """Checa a duração de cada vídeo da fila DEVAGAR (pausa 5s = ritmo humano, evita bloqueio) e remove shorts."""
+    if PROGRESSO['rodando']: return
+    PROGRESSO['rodando'] = True; PROGRESSO['log'] = []; PROGRESSO['abortar'] = False
+    import time
+    try:
+        vs = json.loads(ler(p('videos.json')) or '[]')
+        pend = [v for v in vs if not v.get('dur')
+                and not os.path.exists(p('sinteses', v['id'] + '.md'))
+                and not os.path.exists(p('transcricoes', v['id'] + '.txt'))]
+        log('Verificando a duração de %d vídeo(s) da fila (com calma, pra não bloquear)...' % len(pend))
+        rem, falhas = [], 0
+        for i, v in enumerate(pend):
+            if PROGRESSO['abortar']: log('⛔ Abortado.'); break
+            d = dur_seg(v['id'])
+            if d == 0:
+                falhas += 1; log('%d/%d ? %s — não li agora, tento depois' % (i+1, len(pend), v['titulo'][:34]))
+            elif d < 240:
+                rem.append(v['id']); v['dur'] = d; log('%d/%d 🗑 %s (%ds) — short removido' % (i+1, len(pend), v['titulo'][:34], d))
+            else:
+                v['dur'] = d; log('%d/%d ✓ %s (%dmin) — mantido' % (i+1, len(pend), v['titulo'][:34], d//60))
+            if i < len(pend) - 1: time.sleep(5)  # throttle anti-bloqueio
+        for vid in rem: ignorar(vid, 'short (limpeza)')
+        vs2 = [v for v in vs if v['id'] not in set(rem)]
+        gravar(p('videos.json'), json.dumps(vs2, ensure_ascii=False, indent=1))
+        msg = '✅ Limpeza concluída: %d short(s) removido(s).' % len(rem)
+        if falhas: msg += ' %d não deu pra ler agora (aperte de novo mais tarde).' % falhas
+        log(msg)
+    finally:
+        PROGRESSO['rodando'] = False
 
 def transcrever(vid):
     """3 tentativas com pausa — o YouTube bloqueia IP de datacenter de forma intermitente."""
@@ -340,6 +352,11 @@ def api_transcricao():
     tit = vs.get(vid, {}).get('titulo', vid)
     gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
     return jsonify({'ok': True, 'chars': len(txt)}), 200, resp_headers
+
+@app.route('/api/limpar-shorts', methods=['POST'])
+def api_limpar_shorts():
+    threading.Thread(target=limpar_shorts, daemon=True).start()
+    return jsonify({'ok': True})
 
 @app.route('/api/ignorar', methods=['POST'])
 def api_ignorar():
