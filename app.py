@@ -435,6 +435,45 @@ def api_abortar():
     PROGRESSO['abortar'] = True
     return jsonify({'ok': True})
 
+def yt_meta(vid):
+    s = requests.Session()
+    if PROXIES: s.proxies = PROXIES
+    s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
+    j = s.post('https://www.youtube.com/youtubei/v1/player', json={
+        'context': {'client': {'clientName': 'ANDROID', 'clientVersion': '20.10.38',
+                               'androidSdkVersion': 30, 'hl': 'pt', 'gl': 'BR'}},
+        'videoId': vid}, timeout=30).json()
+    d = j.get('videoDetails', {})
+    return {'titulo': d.get('title', vid), 'dur': int(d.get('lengthSeconds', 0) or 0), 'autor': d.get('author', '')}
+
+def extrair_video_id(tok):
+    tok = tok.strip()
+    m = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|/live/)([\w-]{11})', tok)
+    if m: return m.group(1)
+    return tok if re.match(r'^[\w-]{11}$', tok) else None
+
+@app.route('/api/add-video', methods=['POST'])
+def api_add_video():
+    txt = (request.get_json(force=True) or {}).get('urls', '')
+    ids, vistos = [], set()
+    for tok in re.split(r'[\s,]+', txt.strip()):
+        vid = extrair_video_id(tok)
+        if vid and vid not in vistos: ids.append(vid); vistos.add(vid)
+    if not ids: return jsonify({'erro': 'nenhuma URL válida'}), 400
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    conhecidos = {v['id'] for v in vs}
+    add, novos = 0, []
+    for vid in ids:
+        if vid in conhecidos: continue
+        try: m = yt_meta(vid)
+        except Exception: m = {'titulo': vid, 'dur': 0, 'autor': ''}
+        item = {'id': vid, 'titulo': m['titulo'], 'views': '', 'data': '', 'fonte': m.get('autor') or 'avulso'}
+        if m['dur'] > 0: item['dur'] = m['dur']
+        novos.append(item); conhecidos.add(vid); add += 1
+    vs = novos + vs
+    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    return jsonify({'ok': True, 'adicionados': add, 'total_validas': len(ids)})
+
 @app.route('/api/coletar', methods=['POST'])
 def api_coletar():
     try:

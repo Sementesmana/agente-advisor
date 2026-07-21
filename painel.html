@@ -55,6 +55,14 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <button class="btn" id="proc">&#9654; Processar fila</button>
 <button class="btn" id="abort" style="background:#8a2a2a;color:#fff;display:none">&#9632; Abortar</button>
 <span class="note" id="proc-note">Buscar = atualiza a coluna Pendente com os mais recentes do canal (você prioriza e manda com ▶). Processar fila = roda todos os pendentes na ordem. Cron diário só busca os novos.</span>
+<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px">
+  <div style="font-size:13.5px;color:var(--gold2);font-weight:700;margin-bottom:6px">🔗 Adicionar vídeo de outro canal (entrevistas do Alfredo etc.)</div>
+  <div class="chatrow">
+    <textarea id="urls" placeholder="Cole uma ou mais URLs do YouTube (uma por linha) — PrimoCast, Joel Jota, Os Sócios... qualquer canal" style="flex:1;min-height:46px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 13px;color:var(--tx);font-size:13px;font-family:inherit"></textarea>
+    <button class="btn" id="add-video">+ Adicionar à fila</button>
+  </div>
+  <div id="add-stat" class="note" style="margin-top:6px"></div>
+</div>
 <div class="logbox" id="logbox"></div>
 <div class="kan" id="kanban"></div>
 </div>
@@ -133,9 +141,10 @@ async function estado(){
       cols[k].map(v=>{
         const btn=k!=='consolidado'?`<button title="Avançar só este vídeo" onclick="procUm('${v.id}')" style="background:var(--gold);color:#141414;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;flex-shrink:0">&#9654;</button>`:'';
         const cab=`<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><a href="${yt(v.id)}" target="_blank">${v.titulo}</a>${btn}</div>`;
+        const src=v.fonte&&v.fonte!=='avulso'?`<span style="color:#6fb3e8">📺 ${v.fonte}</span> · `:'';
         return k==='pendente'
-          ?`<div class="vcard pend" draggable="true" data-id="${v.id}" style="cursor:grab">${cab}<small>${v.views||''} ${v.views?'·':''} arraste pra priorizar</small></div>`
-          :`<div class="vcard">${cab}<small>${v.views||''}</small></div>`;
+          ?`<div class="vcard pend" draggable="true" data-id="${v.id}" style="cursor:grab">${cab}<small>${src}${v.views||''} ${v.views?'·':''} arraste pra priorizar</small></div>`
+          :`<div class="vcard">${cab}<small>${src}${v.views||''}</small></div>`;
       }).join('')+'</div>').join('');
   bindDnD();
   $('#tgrid').innerHTML=d.topics.map(t=>`<div class="tcard" onclick="abrirTopico('${t.slug}')"><h3>${t.title}</h3><small>${t.n} princípios</small></div>`).join('');
@@ -162,6 +171,14 @@ $('#buscar').onclick=async()=>{
   $('#proc-note').textContent=d.erro?('Erro ao buscar: '+d.erro):(d.novos+' vídeo(s) novo(s) adicionados no topo da coluna Pendente.');
   estado();};
 $('#limpar').onclick=async()=>{$('#limpar').disabled=true;await fetch('/api/limpar-shorts',{method:'POST'});setTimeout(()=>{$('#limpar').disabled=false;estado();},1500);};
+$('#add-video').onclick=async()=>{
+  const u=$('#urls').value.trim();if(!u)return;
+  $('#add-video').disabled=true;$('#add-stat').textContent='Buscando dados do(s) vídeo(s)...';
+  const d=await fetch('/api/add-video',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({urls:u})}).then(r=>r.json()).catch(e=>({erro:String(e)}));
+  $('#add-video').disabled=false;
+  if(d.erro){$('#add-stat').innerHTML='<span style="color:#d98">'+d.erro+'</span>';}
+  else{$('#add-stat').textContent=`✓ ${d.adicionados} vídeo(s) adicionado(s) no topo da fila.`;$('#urls').value='';estado();}
+};
 let dragId=null;
 function bindDnD(){
   document.querySelectorAll('#kanban .vcard.pend').forEach(c=>{
