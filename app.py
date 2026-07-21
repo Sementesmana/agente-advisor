@@ -3,7 +3,7 @@
 Pipeline: coletar transcrição YouTube -> sintetizar (Claude via mana-llm-gateway) -> consolidar mente -> chat persona.
 Estado derivado do filesystem (data/): transcricoes/{id}.txt, sinteses/{id}.md, mente/{tema}.md, consolidado.json
 """
-import os, io, json, re, glob, threading, traceback
+import os, io, json, re, glob, threading, traceback, datetime
 import requests
 from flask import Flask, request, jsonify, Response
 
@@ -559,13 +559,47 @@ def api_ctx_del(emp, area, nome):
     if os.path.exists(f): os.remove(f)
     return jsonify({'ok': True})
 
+def registrar_conversa(pergunta, resposta):
+    e = empresa_ativa()
+    conv = json.loads(ler(p('conversas.json')) or '[]')
+    item = {'id': max([c['id'] for c in conv], default=0) + 1,
+            'data': datetime.datetime.now().isoformat(timespec='seconds'),
+            'empresa': e['nome'] if e else '', 'empresa_slug': e['slug'] if e else '',
+            'pergunta': pergunta, 'resposta': resposta}
+    conv.append(item)
+    gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
+    return item
+
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     d = request.get_json(force=True)
     try:
-        return jsonify({'resposta': chat(d.get('pergunta', ''), d.get('historico', []))})
+        resp = chat(d.get('pergunta', ''), d.get('historico', []))
+        item = registrar_conversa(d.get('pergunta', ''), resp)
+        return jsonify({'resposta': resp, 'id': item['id'], 'data': item['data'], 'empresa': item['empresa']})
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/conversas')
+def api_conversas():
+    q = request.args.get('q', '').lower().strip()
+    conv = sorted(json.loads(ler(p('conversas.json')) or '[]'), key=lambda c: c['id'], reverse=True)
+    if q:
+        conv = [c for c in conv if q in (c['pergunta'] + ' ' + c['resposta'] + ' ' + c.get('empresa', '')).lower()]
+    return jsonify([{'id': c['id'], 'data': c['data'], 'empresa': c.get('empresa', ''),
+                     'pergunta': c['pergunta'], 'preview': c['resposta'][:180]} for c in conv])
+
+@app.route('/api/conversa/<int:cid>')
+def api_conversa(cid):
+    conv = json.loads(ler(p('conversas.json')) or '[]')
+    c = next((x for x in conv if x['id'] == cid), None)
+    return (jsonify(c), 200) if c else (jsonify({}), 404)
+
+@app.route('/api/conversa/<int:cid>', methods=['DELETE'])
+def api_conversa_del(cid):
+    conv = [x for x in json.loads(ler(p('conversas.json')) or '[]') if x['id'] != cid]
+    gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
+    return jsonify({'ok': True})
 
 @app.route('/')
 def painel():
