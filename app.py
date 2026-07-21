@@ -599,10 +599,13 @@ def api_empresas_areas():
 @app.route('/api/conversas')
 def api_conversas():
     q = request.args.get('q', '').lower().strip()
+    emp = request.args.get('empresa', '').strip()
     conv = sorted(json.loads(ler(p('conversas.json')) or '[]'), key=lambda c: c['id'], reverse=True)
+    if emp:
+        conv = [c for c in conv if c.get('empresa_slug', '') == emp]
     if q:
         conv = [c for c in conv if q in (c['pergunta'] + ' ' + c['resposta'] + ' ' + c.get('empresa', '')).lower()]
-    return jsonify([{'id': c['id'], 'data': c['data'], 'empresa': c.get('empresa', ''),
+    return jsonify([{'id': c['id'], 'data': c['data'], 'empresa': c.get('empresa', ''), 'area': c.get('area', ''),
                      'pergunta': c['pergunta'], 'preview': c['resposta'][:180]} for c in conv])
 
 @app.route('/api/conversa/<int:cid>')
@@ -619,7 +622,13 @@ def api_conversa_del(cid):
 
 @app.route('/api/conversas', methods=['DELETE'])
 def api_conversas_limpar():
-    gravar(p('conversas.json'), json.dumps([]))
+    emp = request.args.get('empresa', '').strip()
+    conv = json.loads(ler(p('conversas.json')) or '[]')
+    if emp:
+        conv = [c for c in conv if c.get('empresa_slug', '') != emp]
+    else:
+        conv = []
+    gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
     return jsonify({'ok': True})
 
 @app.route('/')

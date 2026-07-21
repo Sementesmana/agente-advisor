@@ -77,9 +77,11 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 </div>
 
 <div class="tab" id="t-hist">
-<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-  <input class="search" id="hq" placeholder="Buscar nas consultas... (pergunta, resposta, empresa)" style="flex:1;margin:0">
-  <button class="back" id="limpar-hist" style="color:#d98;white-space:nowrap">🗑 Limpar tudo</button>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <span style="font-size:13px;color:var(--dim)">📁 Cliente:</span>
+  <select id="hist-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
+  <input class="search" id="hq" placeholder="Buscar..." style="flex:1;margin:0;min-width:160px">
+  <button class="back" id="limpar-hist" style="color:#d98;white-space:nowrap">🗑 Limpar</button>
 </div>
 <div id="histlist"></div>
 <div id="histview" style="display:none"></div>
@@ -246,15 +248,22 @@ h1{font-size:20px;margin:0}h1 span{color:#d4a437}
   a.download='advisor_'+(perg||'analise').toLowerCase().replace(/[^\w]+/g,'-').slice(0,40)+'.html';
   a.click();
 }
+async function carregarHistEmp(){
+  const es=await fetch('/api/empresas-areas').then(r=>r.json());
+  const cur=$('#hist-emp').value;
+  $('#hist-emp').innerHTML='<option value="">Todos os clientes</option>'+es.map(e=>`<option value="${e.slug}" ${e.slug===cur?'selected':''}>${e.nome}</option>`).join('');
+}
 async function hist(q){
-  const url='/api/conversas'+(q?('?q='+encodeURIComponent(q)):'');
-  const lista=await fetch(url).then(r=>r.json());
+  await carregarHistEmp();
+  const emp=$('#hist-emp').value;
+  const params=[]; if(q)params.push('q='+encodeURIComponent(q)); if(emp)params.push('empresa='+encodeURIComponent(emp));
+  const lista=await fetch('/api/conversas'+(params.length?'?'+params.join('&'):'')).then(r=>r.json());
   $('#histview').style.display='none';$('#histlist').style.display='block';
-  if(!lista.length){$('#histlist').innerHTML='<p class="note">Nenhuma consulta ainda. Faça perguntas na aba Advisor.</p>';return;}
+  if(!lista.length){$('#histlist').innerHTML='<p class="note">Nenhuma consulta'+(emp?' para este cliente':'')+' ainda.</p>';return;}
   $('#histlist').innerHTML=lista.map(c=>`
     <div class="vcard" style="cursor:pointer" onclick="verConversa(${c.id})">
       <div style="display:flex;justify-content:space-between;gap:10px"><b style="color:var(--gold2)">${c.pergunta.replace(/</g,'&lt;').slice(0,90)}</b><small style="white-space:nowrap">${c.data.replace('T',' ').slice(5,16)}</small></div>
-      <small>${c.empresa||''} — ${c.preview.replace(/</g,'&lt;')}...</small>
+      <small><b style="color:var(--dim)">${c.empresa||'—'}${c.area?' · '+c.area:''}</b> — ${c.preview.replace(/</g,'&lt;')}...</small>
     </div>`).join('');
 }
 window.verConversa=async id=>{
@@ -270,6 +279,7 @@ window.verConversa=async id=>{
 };
 window.delConversa=async id=>{if(confirm('Excluir esta consulta do histórico?')){await fetch('/api/conversa/'+id,{method:'DELETE'});hist();}};
 $('#hq').oninput=e=>{const v=e.target.value.trim();hist(v.length>=2?v:'');};
+$('#hist-emp').onchange=()=>hist($('#hq').value.trim().length>=2?$('#hq').value.trim():'');
 let EMP=null; // empresa ativa
 async function ctx(){
   const d=await fetch('/api/contexto').then(r=>r.json());
@@ -322,8 +332,10 @@ $('#del-emp').onclick=async()=>{if(confirm('Excluir a empresa ativa e todo o con
 $('#nova-area').onclick=async()=>{const nome=prompt('Nome da área/setor (ex.: Comercial, Financeiro):');if(!nome)return;await fetch('/api/contexto/area',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,nome})});ctx();};
 $('#salvar-perfil').onclick=async()=>{await fetch('/api/contexto/perfil',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,perfil:$('#perfil').value})});$('#perfil-ok').textContent='✓ salvo';setTimeout(()=>$('#perfil-ok').textContent='',2500);};
 $('#limpar-hist').onclick=async()=>{
-  if(!confirm('Apagar TODO o histórico de consultas do servidor? Não dá pra desfazer.'))return;
-  await fetch('/api/conversas',{method:'DELETE'});hist();
+  const emp=$('#hist-emp').value;
+  const nome=emp?($('#hist-emp').selectedOptions[0].text):'TODOS os clientes';
+  if(!confirm('Apagar o histórico de '+nome+' no servidor? Não dá pra desfazer.'))return;
+  await fetch('/api/conversas'+(emp?'?empresa='+encodeURIComponent(emp):''),{method:'DELETE'});hist();
 };
 ctx();
 carregarSelEmp();
