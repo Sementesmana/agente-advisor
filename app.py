@@ -30,6 +30,21 @@ TAXONOMIA = ['modelo-de-negocio','vendas-e-ofertas','marketing-de-influencia','c
 app = Flask(__name__)
 PROGRESSO = {'rodando': False, 'log': [], 'abortar': False}
 
+@app.before_request
+def _preflight():
+    if request.method == 'OPTIONS' and request.path.startswith('/api/'):
+        r = Response('')
+        r.headers['Access-Control-Allow-Origin'] = '*'
+        r.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        r.headers['Access-Control-Allow-Headers'] = 'content-type'
+        return r
+
+@app.after_request
+def _cors(resp):
+    if request.path.startswith('/api/'):
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
 def p(*a): return os.path.join(DATA, *a)
 def ler(path): return open(path, encoding='utf-8').read() if os.path.exists(path) else ''
 def gravar(path, txt):
@@ -105,7 +120,10 @@ def coletar():
         if not vid: continue
         feed_ids.append(vid)
         if vid not in conhecidos:
-            novos.append({'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub})
+            item = {'id': vid, 'titulo': _html.unescape(tit).strip(), 'views': '', 'data': pub}
+            d = dur_seg(vid)              # traz a duração já no Buscar (só p/ os novos = poucos)
+            if d > 0: item['dur'] = d
+            novos.append(item)
         else:
             for v in vs:
                 if v['id'] == vid and not v.get('data'): v['data'] = pub
@@ -117,35 +135,16 @@ def coletar():
     return len(novos)
 
 def limpar_shorts():
-    """Checa a duração de cada vídeo da fila DEVAGAR (pausa 5s = ritmo humano, evita bloqueio) e remove shorts."""
-    if PROGRESSO['rodando']: return
-    PROGRESSO['rodando'] = True; PROGRESSO['log'] = []; PROGRESSO['abortar'] = False
-    import time
-    try:
-        vs = json.loads(ler(p('videos.json')) or '[]')
-        pend = [v for v in vs if not v.get('dur')
-                and not os.path.exists(p('sinteses', v['id'] + '.md'))
-                and not os.path.exists(p('transcricoes', v['id'] + '.txt'))]
-        log('Verificando a duração de %d vídeo(s) da fila (com calma, pra não bloquear)...' % len(pend))
-        rem, falhas = [], 0
-        for i, v in enumerate(pend):
-            if PROGRESSO['abortar']: log('⛔ Abortado.'); break
-            d = dur_seg(v['id'])
-            if d == 0:
-                falhas += 1; log('%d/%d ? %s — não li agora, tento depois' % (i+1, len(pend), v['titulo'][:34]))
-            elif d < 240:
-                rem.append(v['id']); v['dur'] = d; log('%d/%d 🗑 %s (%ds) — short removido' % (i+1, len(pend), v['titulo'][:34], d))
-            else:
-                v['dur'] = d; log('%d/%d ✓ %s (%dmin) — mantido' % (i+1, len(pend), v['titulo'][:34], d//60))
-            if i < len(pend) - 1: time.sleep(5)  # throttle anti-bloqueio
-        for vid in rem: ignorar(vid, 'short (limpeza)')
-        vs2 = [v for v in vs if v['id'] not in set(rem)]
-        gravar(p('videos.json'), json.dumps(vs2, ensure_ascii=False, indent=1))
-        msg = '✅ Limpeza concluída: %d short(s) removido(s).' % len(rem)
-        if falhas: msg += ' %d não deu pra ler agora (aperte de novo mais tarde).' % falhas
-        log(msg)
-    finally:
-        PROGRESSO['rodando'] = False
+    """REGRA LOCAL pura — remove da fila quem já tem duração < 4min. Não fala com o YouTube, é instantâneo."""
+    PROGRESSO['log'] = []
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    rem = [v['id'] for v in vs if 0 < (v.get('dur') or 0) < 240]
+    for vid in rem: ignorar(vid, 'short (regra local)')
+    vs2 = [v for v in vs if v['id'] not in set(rem)]
+    gravar(p('videos.json'), json.dumps(vs2, ensure_ascii=False, indent=1))
+    sem = sum(1 for v in vs2 if not v.get('dur'))
+    log('🧹 %d short(s) removido(s) pela duração.' % len(rem) +
+        ((' %d vídeo(s) ainda sem duração — clique em Buscar (traz a duração dos novos).' % sem) if sem else ''))
 
 def transcrever(vid):
     """3 tentativas com pausa — o YouTube bloqueia IP de datacenter de forma intermitente."""
@@ -355,8 +354,20 @@ def api_transcricao():
 
 @app.route('/api/limpar-shorts', methods=['POST'])
 def api_limpar_shorts():
-    threading.Thread(target=limpar_shorts, daemon=True).start()
+    limpar_shorts()  # regra local, instantâneo
     return jsonify({'ok': True})
+
+@app.route('/api/set-duracoes', methods=['POST'])
+def api_set_duracoes():
+    """Recebe {id: segundos} extraídos pelo navegador (IP residencial) e grava a duração na fila."""
+    m = (request.get_json(force=True) or {}).get('duracoes', {})
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    n = 0
+    for v in vs:
+        if v['id'] in m:
+            v['dur'] = int(m[v['id']]); n += 1
+    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    return jsonify({'ok': True, 'atualizados': n})
 
 @app.route('/api/ignorar', methods=['POST'])
 def api_ignorar():
