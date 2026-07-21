@@ -292,22 +292,68 @@ def extrair_texto(nome, dados):
                                           dados.decode('utf-8', 'ignore')))
     return dados.decode('utf-8', 'ignore')
 
-def contexto_empresa():
-    partes = []
-    perfil = ler(p('contexto.md'))
-    if perfil: partes.append('PERFIL DA EMPRESA (escrito pelo dono):\n' + perfil)
-    for f in sorted(glob.glob(p('contexto', '*.txt'))):
-        partes.append('DOCUMENTO [%s]:\n%s' % (os.path.basename(f)[:-4], ler(f)[:30000]))
-    return ('\n\n'.join(partes))[:120000]
+# ---------- CONTEXTO: Empresa -> Área -> itens ----------
+def _slug(s):
+    s = re.sub(r'[^\w\s-]', '', (s or '').strip().lower())
+    return re.sub(r'[\s_-]+', '-', s)[:50] or 'sem-nome'
+
+CTX = 'ctx'  # data/ctx/
+
+def empresas():
+    return json.loads(ler(p(CTX, 'empresas.json')) or '[]')
+
+def salvar_empresas(lst):
+    gravar(p(CTX, 'empresas.json'), json.dumps(lst, ensure_ascii=False, indent=1))
+
+def garantir_empresa_padrao():
+    if not empresas():
+        salvar_empresas([{'slug': 'sementes-mana', 'nome': 'Sementes Maná', 'ativa': True}])
+        gravar(p(CTX, 'sementes-mana', 'perfil.md'), '')
+
+def empresa_ativa():
+    es = empresas()
+    return next((e for e in es if e.get('ativa')), es[0] if es else None)
+
+def ctx_arvore(slug):
+    """Retorna {perfil, areas:[{slug,nome,nota,docs:[{nome,chars}]}]} de uma empresa."""
+    base = p(CTX, slug)
+    perfil = ler(os.path.join(base, 'perfil.md'))
+    areas = []
+    if os.path.isdir(base):
+        for a in sorted(os.listdir(base)):
+            ad = os.path.join(base, a)
+            if not os.path.isdir(ad): continue
+            docs = [{'nome': os.path.basename(f)[:-4], 'chars': len(ler(f))}
+                    for f in sorted(glob.glob(os.path.join(ad, '*.txt')))
+                    if not os.path.basename(f).startswith('_')]
+            nome = ler(os.path.join(ad, '_nome.txt')) or a
+            areas.append({'slug': a, 'nome': nome.strip() or a, 'nota': ler(os.path.join(ad, '_nota.md')), 'docs': docs})
+    return {'perfil': perfil, 'areas': areas}
+
+def contexto_para_chat():
+    """Monta o bloco de contexto da EMPRESA ATIVA, agrupado por área."""
+    e = empresa_ativa()
+    if not e: return ''
+    arv = ctx_arvore(e['slug'])
+    partes = ['EMPRESA: ' + e['nome']]
+    if arv['perfil'].strip(): partes.append('PERFIL GERAL:\n' + arv['perfil'].strip())
+    for a in arv['areas']:
+        bloco = ['--- ÁREA: %s ---' % a['nome']]
+        if a['nota'].strip(): bloco.append(a['nota'].strip())
+        for f in sorted(glob.glob(p(CTX, e['slug'], a['slug'], '*.txt'))):
+            if os.path.basename(f).startswith('_'): continue
+            bloco.append('[doc: %s]\n%s' % (os.path.basename(f)[:-4], ler(f)[:25000]))
+        if len(bloco) > 1: partes.append('\n'.join(bloco))
+    return ('\n\n'.join(partes))[:150000]
 
 # ---------- 4 PERSONA / CHAT ----------
 def chat(pergunta, historico):
     persona = ler(p('mente', 'persona.md'))
     mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(p('mente', '*.md'))) if not f.endswith('persona.md'))
-    ctx = contexto_empresa()
+    ctx = contexto_para_chat()
     sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
-          (('\n\n=== CONTEXTO DA EMPRESA DO USUÁRIO ===\n' + ctx) if ctx else '') + \
-          '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Use o contexto da empresa quando existir — a orientação deve ser específica pro negócio do usuário. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
+          (('\n\n=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n' + ctx) if ctx else '') + \
+          '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Use o contexto da empresa quando existir — a orientação deve ser específica pro negócio. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
     msgs = historico[-8:] + [{'role': 'user', 'content': pergunta}]
     r = requests.post(GW_URL + '/v1/messages',
         headers=_gw_headers(),
@@ -407,16 +453,80 @@ def api_ordem():
     gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True})
 
-@app.route('/api/contexto', methods=['GET', 'POST'])
+@app.route('/api/contexto')
 def api_contexto():
-    if request.method == 'POST':
-        gravar(p('contexto.md'), request.get_json(force=True).get('perfil', ''))
-        return jsonify({'ok': True})
-    docs = [{'nome': os.path.basename(f)[:-4], 'chars': len(ler(f))} for f in sorted(glob.glob(p('contexto', '*.txt')))]
-    return jsonify({'perfil': ler(p('contexto.md')), 'docs': docs})
+    garantir_empresa_padrao()
+    e = empresa_ativa()
+    return jsonify({'empresas': empresas(), 'ativa': e['slug'] if e else None,
+                    'arvore': ctx_arvore(e['slug']) if e else {'perfil': '', 'areas': []}})
+
+@app.route('/api/contexto/empresa', methods=['POST'])
+def api_ctx_empresa_nova():
+    nome = (request.get_json(force=True) or {}).get('nome', '').strip()
+    if not nome: return jsonify({'erro': 'informe o nome'}), 400
+    es = empresas(); slug = _slug(nome)
+    if any(x['slug'] == slug for x in es): return jsonify({'erro': 'empresa já existe'}), 400
+    for x in es: x['ativa'] = False
+    es.append({'slug': slug, 'nome': nome, 'ativa': True})
+    salvar_empresas(es); gravar(p(CTX, slug, 'perfil.md'), '')
+    return jsonify({'ok': True, 'slug': slug})
+
+@app.route('/api/contexto/empresa-ativa', methods=['POST'])
+def api_ctx_empresa_ativa():
+    slug = (request.get_json(force=True) or {}).get('slug', '')
+    es = empresas()
+    if not any(x['slug'] == slug for x in es): return jsonify({'erro': 'não achei'}), 404
+    for x in es: x['ativa'] = (x['slug'] == slug)
+    salvar_empresas(es); return jsonify({'ok': True})
+
+@app.route('/api/contexto/empresa/<slug>', methods=['DELETE'])
+def api_ctx_empresa_del(slug):
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    es = [x for x in empresas() if x['slug'] != slug]
+    if es and not any(x.get('ativa') for x in es): es[0]['ativa'] = True
+    salvar_empresas(es)
+    import shutil
+    if os.path.isdir(p(CTX, slug)): shutil.rmtree(p(CTX, slug))
+    return jsonify({'ok': True})
+
+@app.route('/api/contexto/perfil', methods=['POST'])
+def api_ctx_perfil():
+    d = request.get_json(force=True) or {}
+    slug = d.get('empresa', '')
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    gravar(p(CTX, slug, 'perfil.md'), d.get('perfil', ''))
+    return jsonify({'ok': True})
+
+@app.route('/api/contexto/area', methods=['POST'])
+def api_ctx_area_nova():
+    d = request.get_json(force=True) or {}
+    emp, nome = d.get('empresa', ''), (d.get('nome', '') or '').strip()
+    if not re.match(r'^[\w-]+$', emp) or not nome: return jsonify({'erro': 'dados'}), 400
+    aslug = _slug(nome)
+    gravar(p(CTX, emp, aslug, '_nome.txt'), nome)
+    if not os.path.exists(p(CTX, emp, aslug, '_nota.md')): gravar(p(CTX, emp, aslug, '_nota.md'), '')
+    return jsonify({'ok': True, 'slug': aslug})
+
+@app.route('/api/contexto/area/<emp>/<area>', methods=['DELETE'])
+def api_ctx_area_del(emp, area):
+    if not re.match(r'^[\w-]+$', emp) or not re.match(r'^[\w-]+$', area): return ('', 404)
+    import shutil
+    if os.path.isdir(p(CTX, emp, area)): shutil.rmtree(p(CTX, emp, area))
+    return jsonify({'ok': True})
+
+@app.route('/api/contexto/nota', methods=['POST'])
+def api_ctx_nota():
+    d = request.get_json(force=True) or {}
+    emp, area = d.get('empresa', ''), d.get('area', '')
+    if not re.match(r'^[\w-]+$', emp) or not re.match(r'^[\w-]+$', area): return ('', 404)
+    gravar(p(CTX, emp, area, '_nota.md'), d.get('nota', ''))
+    return jsonify({'ok': True})
 
 @app.route('/api/contexto/upload', methods=['POST'])
 def api_ctx_upload():
+    emp, area = request.form.get('empresa', ''), request.form.get('area', '')
+    if not re.match(r'^[\w-]+$', emp) or not re.match(r'^[\w-]+$', area):
+        return jsonify({'erro': 'escolha empresa e área'}), 400
     f = request.files.get('arquivo')
     if not f: return jsonify({'erro': 'sem arquivo'}), 400
     dados = f.read()
@@ -424,25 +534,28 @@ def api_ctx_upload():
     try: txt = extrair_texto(f.filename, dados)
     except Exception as e: return jsonify({'erro': 'falha ao extrair: %s' % e}), 400
     nome = re.sub(r'[^\w.-]+', '_', os.path.splitext(f.filename)[0])[:60]
-    gravar(p('contexto', nome + '.txt'), txt.strip())
+    gravar(p(CTX, emp, area, nome + '.txt'), txt.strip())
     return jsonify({'ok': True, 'nome': nome, 'chars': len(txt)})
 
 @app.route('/api/contexto/url', methods=['POST'])
 def api_ctx_url():
-    url = request.get_json(force=True).get('url', '').strip()
+    d = request.get_json(force=True) or {}
+    emp, area, url = d.get('empresa', ''), d.get('area', ''), (d.get('url', '') or '').strip()
+    if not re.match(r'^[\w-]+$', emp) or not re.match(r'^[\w-]+$', area):
+        return jsonify({'erro': 'escolha empresa e área'}), 400
     if not url.startswith('http'): return jsonify({'erro': 'URL inválida'}), 400
     try:
         r = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
         txt = extrair_texto('pagina.html', r.content)
     except Exception as e: return jsonify({'erro': 'falha ao buscar: %s' % e}), 400
-    nome = 'site_' + re.sub(r'[^\w.-]+', '_', re.sub(r'^https?://', '', url))[:60]
-    gravar(p('contexto', nome + '.txt'), (url + '\n' + txt).strip())
+    nome = 'site_' + re.sub(r'[^\w.-]+', '_', re.sub(r'^https?://', '', url))[:50]
+    gravar(p(CTX, emp, area, nome + '.txt'), (url + '\n' + txt).strip())
     return jsonify({'ok': True, 'nome': nome, 'chars': len(txt)})
 
-@app.route('/api/contexto/doc/<nome>', methods=['DELETE'])
-def api_ctx_del(nome):
-    if not re.match(r'^[\w.-]+$', nome): return ('', 404)
-    f = p('contexto', nome + '.txt')
+@app.route('/api/contexto/doc/<emp>/<area>/<nome>', methods=['DELETE'])
+def api_ctx_del(emp, area, nome):
+    if not all(re.match(r'^[\w.-]+$', x) for x in (emp, area, nome)): return ('', 404)
+    f = p(CTX, emp, area, nome + '.txt')
     if os.path.exists(f): os.remove(f)
     return jsonify({'ok': True})
 

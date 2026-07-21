@@ -70,21 +70,23 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 </div>
 
 <div class="tab" id="t-ctx">
-<p class="note">Tudo daqui entra na cabeça do advisor em <b>toda</b> conversa: descreva a empresa e anexe documentos/sites com números e planos.</p>
-<h3 style="color:var(--gold2);font-size:15px;margin:14px 0 8px">Perfil da empresa</h3>
-<textarea id="perfil" style="width:100%;min-height:160px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--tx);font-size:13.5px;font-family:inherit" placeholder="Ex.: Sementes Maná LTDA — produção e venda de sementes de soja... faturamento, margem, canais, estrutura comercial, metas do ano, principais desafios..."></textarea>
-<div style="margin-top:8px"><button class="btn" id="salvar-perfil">Salvar perfil</button> <span class="note" id="perfil-ok"></span></div>
-<h3 style="color:var(--gold2);font-size:15px;margin:22px 0 8px">Documentos (PDF, Word, HTML, TXT)</h3>
-<div id="drop" style="border:2px dashed var(--line);border-radius:12px;padding:26px 18px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel)">
-  <div style="font-size:30px;margin-bottom:6px">&#128228;</div>
-  <div style="font-size:14px;color:var(--tx)">Arraste arquivos aqui <span style="color:var(--dim)">ou clique para escolher</span></div>
-  <div style="font-size:11.5px;color:var(--dim);margin-top:4px">PDF, Word, HTML, TXT · vários de uma vez · até 15MB cada</div>
-  <input type="file" id="arq" accept=".pdf,.docx,.html,.htm,.txt,.md" multiple style="display:none">
+<p class="note">O advisor usa o contexto da <b>empresa ativa</b> em toda conversa. Organize por área/setor — vá empilhando documentos e entrevistas em cada uma.</p>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 18px">
+  <span style="font-size:13px;color:var(--dim)">Empresa ativa:</span>
+  <select id="sel-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:9px 14px;color:var(--gold2);font-size:14px;font-weight:700"></select>
+  <button class="btn" id="nova-emp" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--line);padding:9px 14px">+ Nova empresa</button>
+  <button class="back" id="del-emp" title="Excluir empresa">excluir</button>
 </div>
-<div id="upstat" class="note" style="margin-top:8px"></div>
-<h3 style="color:var(--gold2);font-size:15px;margin:22px 0 8px">Sites (URL)</h3>
-<div class="chatrow"><input type="url" id="url" placeholder="https://www.sementesmana.com.br" style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--tx)"><button class="btn" id="add-url">Adicionar</button></div>
-<div id="docs" style="margin-top:18px"></div>
+
+<h3 style="color:var(--gold2);font-size:15px;margin:14px 0 8px">Perfil geral da empresa</h3>
+<textarea id="perfil" style="width:100%;min-height:120px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--tx);font-size:13.5px;font-family:inherit" placeholder="Faturamento, margem, canais, estrutura comercial, metas do ano, principais desafios..."></textarea>
+<div style="margin-top:8px"><button class="btn" id="salvar-perfil">Salvar perfil</button> <span class="note" id="perfil-ok"></span></div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px">
+  <h3 style="color:var(--gold2);font-size:15px">Áreas / setores</h3>
+  <button class="btn" id="nova-area" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--line);padding:8px 14px;font-size:13px">+ Nova área</button>
+</div>
+<div id="areas"></div>
 </div>
 
 <script>
@@ -173,38 +175,56 @@ async function enviar(){
   }catch(e){el.textContent='Erro de conexão: '+e;}
   el.scrollIntoView();
 }
+let EMP=null; // empresa ativa
 async function ctx(){
   const d=await fetch('/api/contexto').then(r=>r.json());
-  $('#perfil').value=d.perfil||'';
-  $('#docs').innerHTML=d.docs.length?'<h3 style="color:var(--gold2);font-size:15px;margin-bottom:8px">Na cabeça do advisor:</h3>'+d.docs.map(x=>`<div class="vcard" style="display:flex;justify-content:space-between;align-items:center"><span>📄 ${x.nome} <small>(${Math.round(x.chars/1000)}k caracteres)</small></span><button class="back" onclick="delDoc('${x.nome}')">remover</button></div>`).join(''):'';
+  EMP=d.ativa;
+  $('#sel-emp').innerHTML=d.empresas.map(e=>`<option value="${e.slug}" ${e.slug===d.ativa?'selected':''}>${e.nome}</option>`).join('');
+  $('#perfil').value=d.arvore.perfil||'';
+  renderAreas(d.arvore.areas);
 }
-window.delDoc=async n=>{await fetch('/api/contexto/doc/'+n,{method:'DELETE'});ctx();};
-$('#salvar-perfil').onclick=async()=>{await fetch('/api/contexto',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({perfil:$('#perfil').value})});$('#perfil-ok').textContent='✓ salvo';setTimeout(()=>$('#perfil-ok').textContent='',2500);};
-const drop=$('#drop');
-async function enviarArquivos(files){
-  const lista=[...files]; if(!lista.length)return;
-  let ok=0, erros=[];
+function renderAreas(areas){
+  if(!areas.length){$('#areas').innerHTML='<p class="note">Nenhuma área ainda. Clique em "+ Nova área" (ex.: Comercial, Financeiro, Operações).</p>';return;}
+  $('#areas').innerHTML=areas.map(a=>`
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <b style="color:var(--gold2);font-size:14.5px">${a.nome}</b>
+        <button class="back" onclick="delArea('${a.slug}')" title="Excluir área">excluir área</button>
+      </div>
+      <textarea id="nota-${a.slug}" placeholder="Anotações desta área — resumo de entrevista, números, situação atual..." style="width:100%;min-height:70px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--tx);font-size:13px;font-family:inherit">${a.nota||''}</textarea>
+      <div style="margin:6px 0 10px"><button class="btn" style="padding:6px 14px;font-size:12.5px" onclick="salvarNota('${a.slug}')">Salvar nota</button> <span class="note" id="nota-ok-${a.slug}"></span></div>
+      <div class="drop" data-area="${a.slug}" style="border:2px dashed var(--line);border-radius:9px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;color:var(--dim)">📥 Arraste PDF/Word/HTML aqui ou clique — vários de uma vez</div>
+      <div style="display:flex;gap:8px;margin-top:8px"><input type="url" id="url-${a.slug}" placeholder="https://... (site)" style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;color:var(--tx);font-size:12.5px"><button class="btn" style="padding:6px 14px;font-size:12.5px" onclick="addUrl('${a.slug}')">+ Site</button></div>
+      <div id="up-${a.slug}" class="note" style="margin-top:6px"></div>
+      ${a.docs.length?'<div style="margin-top:10px">'+a.docs.map(x=>`<div class="vcard" style="display:flex;justify-content:space-between;align-items:center"><span>📄 ${x.nome} <small>(${Math.round(x.chars/1000)}k)</small></span><button class="back" onclick="delDoc('${a.slug}','${x.nome}')">remover</button></div>`).join('')+'</div>':''}
+    </div>`).join('');
+  document.querySelectorAll('#areas .drop').forEach(dz=>{
+    const a=dz.dataset.area;
+    dz.onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.accept='.pdf,.docx,.html,.htm,.txt,.md';inp.onchange=e=>upFiles(a,e.target.files);inp.click();};
+    dz.ondragover=e=>{e.preventDefault();dz.style.borderColor='var(--gold)';};
+    dz.ondragleave=()=>{dz.style.borderColor='var(--line)';};
+    dz.ondrop=e=>{e.preventDefault();dz.style.borderColor='var(--line)';upFiles(a,e.dataTransfer.files);};
+  });
+}
+async function upFiles(area,files){
+  const lista=[...files];if(!lista.length)return;let ok=0,erros=[];
   for(let i=0;i<lista.length;i++){
-    $('#upstat').textContent=`Enviando ${i+1}/${lista.length}: ${lista[i].name}...`;
-    const fd=new FormData(); fd.append('arquivo',lista[i]);
-    try{const d=await fetch('/api/contexto/upload',{method:'POST',body:fd}).then(r=>r.json());
-      if(d.erro)erros.push(lista[i].name+': '+d.erro); else ok++;
-    }catch(e){erros.push(lista[i].name+': falha');}
+    $('#up-'+area).textContent=`Enviando ${i+1}/${lista.length}: ${lista[i].name}...`;
+    const fd=new FormData();fd.append('arquivo',lista[i]);fd.append('empresa',EMP);fd.append('area',area);
+    try{const d=await fetch('/api/contexto/upload',{method:'POST',body:fd}).then(r=>r.json());if(d.erro)erros.push(lista[i].name+': '+d.erro);else ok++;}catch(e){erros.push(lista[i].name);}
   }
-  $('#upstat').innerHTML=`✓ ${ok} arquivo(s) anexado(s).`+(erros.length?` <span style="color:#d98">Falhas: ${erros.join('; ')}</span>`:'');
-  $('#arq').value=''; ctx();
+  $('#up-'+area).innerHTML=`✓ ${ok} anexado(s).`+(erros.length?` <span style="color:#d98">${erros.join('; ')}</span>`:'');ctx();
 }
-drop.onclick=()=>$('#arq').click();
-$('#arq').onchange=e=>enviarArquivos(e.target.files);
-drop.ondragover=e=>{e.preventDefault();drop.style.borderColor='var(--gold)';drop.style.background='var(--panel2)';};
-drop.ondragleave=()=>{drop.style.borderColor='var(--line)';drop.style.background='var(--panel)';};
-drop.ondrop=e=>{e.preventDefault();drop.style.borderColor='var(--line)';drop.style.background='var(--panel)';enviarArquivos(e.dataTransfer.files);};
-$('#add-url').onclick=async()=>{
-  const u=$('#url').value.trim();if(!u)return;
-  $('#add-url').disabled=true;
-  const d=await fetch('/api/contexto/url',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url:u})}).then(r=>r.json());
-  $('#add-url').disabled=false;$('#url').value='';
-  if(d.erro)alert(d.erro);ctx();};
+window.addUrl=async area=>{const u=$('#url-'+area).value.trim();if(!u)return;const d=await fetch('/api/contexto/url',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,area,url:u})}).then(r=>r.json());if(d.erro)alert(d.erro);ctx();};
+window.delDoc=async(area,n)=>{await fetch(`/api/contexto/doc/${EMP}/${area}/${n}`,{method:'DELETE'});ctx();};
+window.delArea=async area=>{if(confirm('Excluir esta área e tudo dentro dela?')){await fetch(`/api/contexto/area/${EMP}/${area}`,{method:'DELETE'});ctx();}};
+window.salvarNota=async area=>{await fetch('/api/contexto/nota',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,area,nota:$('#nota-'+area).value})});$('#nota-ok-'+area).textContent='✓';setTimeout(()=>$('#nota-ok-'+area).textContent='',2000);};
+window.salvarNota=window.salvarNota;
+$('#sel-emp').onchange=async e=>{await fetch('/api/contexto/empresa-ativa',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug:e.target.value})});ctx();};
+$('#nova-emp').onclick=async()=>{const nome=prompt('Nome da nova empresa:');if(!nome)return;const d=await fetch('/api/contexto/empresa',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({nome})}).then(r=>r.json());if(d.erro)alert(d.erro);ctx();};
+$('#del-emp').onclick=async()=>{if(confirm('Excluir a empresa ativa e todo o contexto dela?')){await fetch('/api/contexto/empresa/'+EMP,{method:'DELETE'});ctx();}};
+$('#nova-area').onclick=async()=>{const nome=prompt('Nome da área/setor (ex.: Comercial, Financeiro):');if(!nome)return;await fetch('/api/contexto/area',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,nome})});ctx();};
+$('#salvar-perfil').onclick=async()=>{await fetch('/api/contexto/perfil',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,perfil:$('#perfil').value})});$('#perfil-ok').textContent='✓ salvo';setTimeout(()=>$('#perfil-ok').textContent='',2500);};
 ctx();
 $('#send').onclick=enviar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
