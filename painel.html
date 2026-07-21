@@ -65,13 +65,22 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 </div>
 
 <div class="tab" id="t-chat">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+  <span style="font-size:13px;color:var(--dim)">Consultando sobre:</span>
+  <select id="chat-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
+  <select id="chat-area" style="background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 12px;color:var(--tx);font-size:13.5px"></select>
+  <button class="back" id="limpar-chat" style="margin-left:auto">🗑 Limpar conversa</button>
+</div>
 <div id="chatlog"><div class="msg a">E aí! Sou o teu advisor — estudei a fundo o método do Alfredo Soares. Me conta o desafio: modelo de negócio, vendas, canal, gente, escala... e já te devolvo com plano e a conta feita. Bora?</div></div>
 <div class="chatrow"><textarea id="q" placeholder="Ex.: como estruturo a rede de consultores da Maná pra vender mais soja premium?"></textarea><button class="btn" id="send">Enviar</button></div>
-<p class="note">Cada consulta é gravada automaticamente na aba <b>Histórico</b>. Passe o mouse numa resposta para exportar o HTML.</p>
+<p class="note">Cada consulta é gravada na aba <b>Histórico</b> com a empresa/área. Passe o mouse numa resposta para exportar o HTML.</p>
 </div>
 
 <div class="tab" id="t-hist">
-<input class="search" id="hq" placeholder="Buscar nas consultas... (pergunta, resposta, empresa)">
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+  <input class="search" id="hq" placeholder="Buscar nas consultas... (pergunta, resposta, empresa)" style="flex:1;margin:0">
+  <button class="back" id="limpar-hist" style="color:#d98;white-space:nowrap">🗑 Limpar tudo</button>
+</div>
 <div id="histlist"></div>
 <div id="histview" style="display:none"></div>
 </div>
@@ -175,14 +184,33 @@ async function enviar(){
   $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a">pensando...</div>`);
   const el=$('#chatlog').lastChild;el.scrollIntoView();
   try{
+    const emp=$('#chat-emp').value, area=$('#chat-area').value;
     const d=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({pergunta:q,historico:HIST})}).then(r=>r.json());
+      body:JSON.stringify({pergunta:q,historico:HIST,empresa:emp,area:area})}).then(r=>r.json());
     if(d.erro){el.textContent='Erro: '+d.erro;return;}
     el.innerHTML=md2html(d.resposta)+botaoExport(q,d.resposta,d.empresa,d.data);
     HIST.push({role:'user',content:q},{role:'assistant',content:d.resposta});HIST=HIST.slice(-8);
   }catch(e){el.textContent='Erro de conexão: '+e;}
   el.scrollIntoView();
 }
+async function carregarSelEmp(){
+  const es=await fetch('/api/empresas-areas').then(r=>r.json());
+  window._EA=es;
+  const ativa=(es.find(e=>e.ativa)||es[0]||{}).slug;
+  $('#chat-emp').innerHTML=es.map(e=>`<option value="${e.slug}" ${e.slug===ativa?'selected':''}>${e.nome}</option>`).join('');
+  atualizaAreas();
+}
+function atualizaAreas(){
+  const emp=(window._EA||[]).find(e=>e.slug===$('#chat-emp').value);
+  const areas=emp?emp.areas:[];
+  $('#chat-area').innerHTML='<option value="">Todas as áreas</option>'+areas.map(a=>`<option value="${a.slug}">${a.nome}</option>`).join('');
+}
+$('#chat-emp').onchange=atualizaAreas;
+$('#limpar-chat').onclick=()=>{
+  if(!confirm('Limpar a conversa desta tela? (o histórico gravado no servidor não é afetado)'))return;
+  HIST=[];
+  $('#chatlog').innerHTML='<div class="msg a">Conversa limpa. Manda a próxima que eu te devolvo com plano e a conta feita.</div>';
+};
 function botaoExport(perg,resp,emp,data){
   const id='ex'+Math.random().toString(36).slice(2,8);
   window['_'+id]={perg,resp,emp,data};
@@ -249,6 +277,7 @@ async function ctx(){
   $('#sel-emp').innerHTML=d.empresas.map(e=>`<option value="${e.slug}" ${e.slug===d.ativa?'selected':''}>${e.nome}</option>`).join('');
   $('#perfil').value=d.arvore.perfil||'';
   renderAreas(d.arvore.areas);
+  carregarSelEmp();
 }
 function renderAreas(areas){
   if(!areas.length){$('#areas').innerHTML='<p class="note">Nenhuma área ainda. Clique em "+ Nova área" (ex.: Comercial, Financeiro, Operações).</p>';return;}
@@ -292,7 +321,12 @@ $('#nova-emp').onclick=async()=>{const nome=prompt('Nome da nova empresa:');if(!
 $('#del-emp').onclick=async()=>{if(confirm('Excluir a empresa ativa e todo o contexto dela?')){await fetch('/api/contexto/empresa/'+EMP,{method:'DELETE'});ctx();}};
 $('#nova-area').onclick=async()=>{const nome=prompt('Nome da área/setor (ex.: Comercial, Financeiro):');if(!nome)return;await fetch('/api/contexto/area',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,nome})});ctx();};
 $('#salvar-perfil').onclick=async()=>{await fetch('/api/contexto/perfil',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({empresa:EMP,perfil:$('#perfil').value})});$('#perfil-ok').textContent='✓ salvo';setTimeout(()=>$('#perfil-ok').textContent='',2500);};
+$('#limpar-hist').onclick=async()=>{
+  if(!confirm('Apagar TODO o histórico de consultas do servidor? Não dá pra desfazer.'))return;
+  await fetch('/api/conversas',{method:'DELETE'});hist();
+};
 ctx();
+carregarSelEmp();
 $('#send').onclick=enviar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
 estado();

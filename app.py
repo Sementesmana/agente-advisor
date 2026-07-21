@@ -330,14 +330,19 @@ def ctx_arvore(slug):
             areas.append({'slug': a, 'nome': nome.strip() or a, 'nota': ler(os.path.join(ad, '_nota.md')), 'docs': docs})
     return {'perfil': perfil, 'areas': areas}
 
-def contexto_para_chat():
-    """Monta o bloco de contexto da EMPRESA ATIVA, agrupado por área."""
-    e = empresa_ativa()
+def _empresa_por_slug(slug):
+    es = empresas()
+    return next((x for x in es if x['slug'] == slug), None) or empresa_ativa()
+
+def contexto_para_chat(empresa_slug=None, area_slug=None):
+    """Monta o contexto de uma empresa (default: ativa). Se area_slug, foca só naquela área."""
+    e = _empresa_por_slug(empresa_slug)
     if not e: return ''
     arv = ctx_arvore(e['slug'])
     partes = ['EMPRESA: ' + e['nome']]
     if arv['perfil'].strip(): partes.append('PERFIL GERAL:\n' + arv['perfil'].strip())
     for a in arv['areas']:
+        if area_slug and a['slug'] != area_slug: continue
         bloco = ['--- ÁREA: %s ---' % a['nome']]
         if a['nota'].strip(): bloco.append(a['nota'].strip())
         for f in sorted(glob.glob(p(CTX, e['slug'], a['slug'], '*.txt'))):
@@ -347,10 +352,10 @@ def contexto_para_chat():
     return ('\n\n'.join(partes))[:150000]
 
 # ---------- 4 PERSONA / CHAT ----------
-def chat(pergunta, historico):
+def chat(pergunta, historico, empresa_slug=None, area_slug=None):
     persona = ler(p('mente', 'persona.md'))
     mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(p('mente', '*.md'))) if not f.endswith('persona.md'))
-    ctx = contexto_para_chat()
+    ctx = contexto_para_chat(empresa_slug, area_slug)
     sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
           (('\n\n=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n' + ctx) if ctx else '') + \
           '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Use o contexto da empresa quando existir — a orientação deve ser específica pro negócio. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
@@ -559,12 +564,11 @@ def api_ctx_del(emp, area, nome):
     if os.path.exists(f): os.remove(f)
     return jsonify({'ok': True})
 
-def registrar_conversa(pergunta, resposta):
-    e = empresa_ativa()
+def registrar_conversa(pergunta, resposta, emp_nome='', emp_slug='', area=''):
     conv = json.loads(ler(p('conversas.json')) or '[]')
     item = {'id': max([c['id'] for c in conv], default=0) + 1,
             'data': datetime.datetime.now().isoformat(timespec='seconds'),
-            'empresa': e['nome'] if e else '', 'empresa_slug': e['slug'] if e else '',
+            'empresa': emp_nome, 'empresa_slug': emp_slug, 'area': area,
             'pergunta': pergunta, 'resposta': resposta}
     conv.append(item)
     gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
@@ -573,12 +577,24 @@ def registrar_conversa(pergunta, resposta):
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     d = request.get_json(force=True)
+    emp_slug, area = d.get('empresa') or None, d.get('area') or None
     try:
-        resp = chat(d.get('pergunta', ''), d.get('historico', []))
-        item = registrar_conversa(d.get('pergunta', ''), resp)
-        return jsonify({'resposta': resp, 'id': item['id'], 'data': item['data'], 'empresa': item['empresa']})
+        resp = chat(d.get('pergunta', ''), d.get('historico', []), emp_slug, area)
+        e = _empresa_por_slug(emp_slug)
+        item = registrar_conversa(d.get('pergunta', ''), resp, e['nome'] if e else '', e['slug'] if e else '', area or '')
+        return jsonify({'resposta': resp, 'id': item['id'], 'data': item['data'], 'empresa': item['empresa'], 'area': area or ''})
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/empresas-areas')
+def api_empresas_areas():
+    garantir_empresa_padrao()
+    out = []
+    for e in empresas():
+        arv = ctx_arvore(e['slug'])
+        out.append({'slug': e['slug'], 'nome': e['nome'], 'ativa': e.get('ativa'),
+                    'areas': [{'slug': a['slug'], 'nome': a['nome']} for a in arv['areas']]})
+    return jsonify(out)
 
 @app.route('/api/conversas')
 def api_conversas():
@@ -599,6 +615,11 @@ def api_conversa(cid):
 def api_conversa_del(cid):
     conv = [x for x in json.loads(ler(p('conversas.json')) or '[]') if x['id'] != cid]
     gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
+    return jsonify({'ok': True})
+
+@app.route('/api/conversas', methods=['DELETE'])
+def api_conversas_limpar():
+    gravar(p('conversas.json'), json.dumps([]))
     return jsonify({'ok': True})
 
 @app.route('/')
