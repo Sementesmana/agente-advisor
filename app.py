@@ -121,11 +121,13 @@ def coletar():
         if os.path.exists(p('sinteses', v['id'] + '.txt')) or os.path.exists(p('sinteses', v['id'] + '.md')):
             limpos.append(v); continue
         checados += 1
-        d = dur_seg(v['id']); v['dur'] = d
+        d = dur_seg(v['id'])
         if 0 < d < 240:
             ignorar(v['id'], 'short %ds (faxina)' % d); shorts += 1
+        elif d >= 240:
+            v['dur'] = d; limpos.append(v)   # só marca quando leu de verdade
         else:
-            limpos.append(v)
+            limpos.append(v)                  # d==0 = falha/bloqueio: re-tenta na próxima
     vs = novos + limpos
     pos = {vid: i for i, vid in enumerate(feed_ids)}
     vs.sort(key=lambda v: pos.get(v['id'], 10**6))
@@ -338,6 +340,16 @@ def api_transcricao():
     tit = vs.get(vid, {}).get('titulo', vid)
     gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
     return jsonify({'ok': True, 'chars': len(txt)}), 200, resp_headers
+
+@app.route('/api/ignorar', methods=['POST'])
+def api_ignorar():
+    """Remove uma lista de IDs da fila e manda pros ignorados (usado p/ limpar shorts identificados fora)."""
+    ids = set((request.get_json(force=True) or {}).get('ids', []))
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    manter = [v for v in vs if v['id'] not in ids]
+    gravar(p('videos.json'), json.dumps(manter, ensure_ascii=False, indent=1))
+    for vid in ids: ignorar(vid, 'short (lote)')
+    return jsonify({'ok': True, 'removidos': len(vs) - len(manter)})
 
 @app.route('/api/abortar', methods=['POST'])
 def api_abortar():
