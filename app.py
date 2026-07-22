@@ -220,11 +220,13 @@ Se uma síntese só reforça um princípio já existente, faça um princípio no
 
 def consolidar(tema, novos_ids):
     atual = ler(p('mente', tema + '.md'))
-    prox = len(re.findall(r'\*\*\d+\.', atual)) + 1  # próximo número livre
+    titulos = re.findall(r'\*\*\d+\.[^\n]*?\*\*', atual)   # só os cabeçalhos **N. Título.**
+    prox = len(titulos) + 1                                # próximo número livre
+    ref = '\n'.join(titulos) or '(tópico novo)'
     sints = '\n\n---\n\n'.join(ler(p('sinteses', i + '.md')) for i in novos_ids)
     novos = llm(CONSOL_SYS % prox,
-                'TÓPICO: %s\n\nPRINCÍPIOS EXISTENTES (referência, NÃO reescrever):\n%s\n\nNOVAS SÍNTESES:\n%s'
-                % (tema, atual or '(novo tópico)', sints), 4000).strip()
+                'TÓPICO: %s\n\nTÍTULOS DOS PRINCÍPIOS EXISTENTES (só para NÃO duplicar):\n%s\n\nNOVAS SÍNTESES:\n%s'
+                % (tema, ref, sints), 4000).strip()
     # separa corpo x seção Fontes do arquivo atual
     m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
     if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
