@@ -18,7 +18,8 @@ if DATA != _SEED and not os.path.exists(os.path.join(DATA, 'videos.json')):
     print('[boot] volume semeado a partir do repo', flush=True)
 GW_URL = os.environ.get('LLM_GATEWAY_URL', '').rstrip('/')
 GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
-MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')
+MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')                 # chat do Advisor (qualidade)
+MODEL_SINTESE = os.environ.get('LLM_MODEL_SINTESE', 'mana-rapido')       # síntese/consolidação (barato = Haiku)
 CRON_HORA = int(os.environ.get('CRON_HORA', '7'))  # BRT
 YT_CHANNEL_ID = os.environ.get('YT_CHANNEL_ID', 'UCh9HMS4C3F02msM-kiilAdA')  # @canaldoalfredosoares
 PROXY_URL = os.environ.get('PROXY_URL', '')  # proxy residencial p/ YouTube (http://user:pass@host:porta)
@@ -73,10 +74,10 @@ def _gw_headers():
     return {'x-api-key': GW_KEY, 'Authorization': 'Bearer ' + GW_KEY,
             'anthropic-version': '2023-06-01', 'content-type': 'application/json'}
 
-def llm(system, user, max_tokens=8000):
+def llm(system, user, max_tokens=8000, model=None):
     r = requests.post(GW_URL + '/v1/messages',
         headers=_gw_headers(),
-        json={'model': MODEL, 'max_tokens': max_tokens, 'system': system,
+        json={'model': model or MODEL_SINTESE, 'max_tokens': max_tokens, 'system': system,
               'messages': [{'role': 'user', 'content': user}]}, timeout=300)
     r.raise_for_status()
     return ''.join(b.get('text', '') for b in r.json().get('content', []))
@@ -441,6 +442,45 @@ def api_sem_titulo():
     """Lista vídeos cujo título ficou igual ao id (pro navegador re-buscar os nomes)."""
     vs = json.loads(ler(p('videos.json')) or '[]')
     return jsonify([v['id'] for v in vs if v.get('titulo', '') == v['id']])
+
+# ---------- Síntese feita no Cowork (subagentes) — app só grava, sem LLM ----------
+@app.route('/api/transcricao/<vid>')
+def api_get_transcricao(vid):
+    if not re.match(r'^[\w-]{11}$', vid): return ('', 404)
+    txt = ler(p('transcricoes', vid + '.txt'))
+    if not txt: return jsonify({}), 404
+    tit = next((v['titulo'] for v in json.loads(ler(p('videos.json')) or '[]') if v['id'] == vid), vid)
+    return jsonify({'id': vid, 'titulo': tit, 'texto': txt})
+
+@app.route('/api/pendentes-sintese')
+def api_pendentes_sintese():
+    """IDs que têm transcrição mas ainda não têm síntese."""
+    out = []
+    for f in sorted(glob.glob(p('transcricoes', '*.txt'))):
+        vid = os.path.basename(f)[:-4]
+        if not os.path.exists(p('sinteses', vid + '.md')):
+            tit = next((v['titulo'] for v in json.loads(ler(p('videos.json')) or '[]') if v['id'] == vid), vid)
+            out.append({'id': vid, 'titulo': tit})
+    return jsonify(out)
+
+@app.route('/api/set-sintese/<vid>', methods=['POST'])
+def api_set_sintese(vid):
+    """Recebe a síntese .md já pronta (feita no Cowork) e grava — sem chamar LLM."""
+    if not re.match(r'^[\w-]{11}$', vid): return ('', 404)
+    gravar(p('sinteses', vid + '.md'), (request.get_json(force=True) or {}).get('md', '').strip())
+    return jsonify({'ok': True})
+
+@app.route('/api/set-mente/<tema>', methods=['POST'])
+def api_set_mente(tema):
+    """Recebe o arquivo .md de um tópico da mente (consolidado no Cowork) e grava; marca ids como consolidados."""
+    if not re.match(r'^[\w-]+$', tema): return ('', 404)
+    d = request.get_json(force=True) or {}
+    gravar(p('mente', tema + '.md'), (d.get('md', '') or '').strip())
+    ids = d.get('ids', [])
+    if ids:
+        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(ids)
+        gravar(p('consolidado.json'), json.dumps(sorted(cons)))
+    return jsonify({'ok': True})
 
 @app.route('/api/ignorar', methods=['POST'])
 def api_ignorar():
