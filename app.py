@@ -470,6 +470,21 @@ def api_set_sintese(vid):
     gravar(p('sinteses', vid + '.md'), (request.get_json(force=True) or {}).get('md', '').strip())
     return jsonify({'ok': True})
 
+@app.route('/api/importar-lote', methods=['POST'])
+def api_importar_lote():
+    """Recebe TUDO de uma vez (sínteses + mente + ids consolidados), feito no Cowork. Grava sem LLM."""
+    d = request.get_json(force=True) or {}
+    n_s = n_m = 0
+    for vid, md in (d.get('sinteses', {}) or {}).items():
+        if re.match(r'^[\w-]{11}$', vid): gravar(p('sinteses', vid + '.md'), (md or '').strip()); n_s += 1
+    for tema, md in (d.get('mente', {}) or {}).items():
+        if re.match(r'^[\w-]+$', tema): gravar(p('mente', tema + '.md'), (md or '').strip()); n_m += 1
+    ids = d.get('consolidado', [])
+    if ids:
+        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(ids)
+        gravar(p('consolidado.json'), json.dumps(sorted(cons)))
+    return jsonify({'ok': True, 'sinteses': n_s, 'temas': n_m})
+
 @app.route('/api/set-mente/<tema>', methods=['POST'])
 def api_set_mente(tema):
     """Recebe o arquivo .md de um tópico da mente (consolidado no Cowork) e grava; marca ids como consolidados."""
