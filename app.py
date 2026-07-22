@@ -213,36 +213,49 @@ def sintetizar(v):
     m = re.search(r'tags:\s*(.+)', md)
     return [t.strip() for t in m.group(1).split(',') if t.strip() in TAXONOMIA] if m else []
 
-# ---------- 3 CONSOLIDADOR (probabilístico, APPEND — só gera os princípios novos) ----------
-CONSOL_SYS = """Você ADICIONA princípios ao tópico "%s" da "mente do Alfredo Soares" (modo append). Receberá os títulos dos princípios já existentes (referência) e novas sínteses.
-RELEVÂNCIA (regra dura): inclua um princípio AQUI só se ele for ESPECIFICAMENTE sobre o tema "%s". Ideia genérica, ou que caiba melhor em outro tema, NÃO entra aqui — omita. É melhor devolver poucos princípios (ou nenhum) do que espalhar a mesma lição em vários temas.
-Gere APENAS os princípios NOVOS e específicos deste tema — NÃO repita, NÃO reescreva e NÃO renumere os existentes. Comece a numerar em %d. Formato, um bloco por princípio:
-**N. Título.** corpo com citação [Nome do vídeo · VIDEOID]
-Não invente. Responda SÓ com os blocos de princípios (ou nada, se a síntese não trouxer algo específico deste tema) — sem título e sem a seção ## Fontes."""
+# ---------- 3 CONSOLIDADOR (roteia cada princípio p/ UM tema-dono; sem duplicar entre temas) ----------
+ROTA_SYS = """Você transforma a síntese de UM vídeo do Alfredo Soares em princípios para a "mente", roteando cada princípio para UM ÚNICO tema (o mais central).
+Temas válidos (use exatamente estes slugs): %s
+Regras:
+- Cada princípio vai para UM tema só — o mais específico. NUNCA coloque a mesma ideia em temas diferentes.
+- Gere de 4 a 10 princípios NO TOTAL (não por tema), cobrindo o que o vídeo tem de mais forte e prático.
+- Título curto (3-6 palavras). Corpo denso (1-3 frases) com o insight acionável e os números/nomes citados.
+- Não invente; use só o que está na síntese.
+SAÍDA: uma linha por princípio, no formato EXATO abaixo (sem markdown, sem numeração, sem nada além das linhas):
+tema-slug ||| Título curto ||| corpo do princípio"""
 
-def consolidar(tema, novos_ids):
-    atual = ler(p('mente', tema + '.md'))
-    titulos = re.findall(r'\*\*\d+\.[^\n]*?\*\*', atual)   # só os cabeçalhos **N. Título.**
-    prox = len(titulos) + 1                                # próximo número livre
-    ref = '\n'.join(titulos) or '(tópico novo)'
-    sints = '\n\n---\n\n'.join(ler(p('sinteses', i + '.md')) for i in novos_ids)
-    novos = llm(CONSOL_SYS % (tema, tema, prox),
-                'TÓPICO: %s\n\nTÍTULOS DOS PRINCÍPIOS EXISTENTES (só para NÃO duplicar):\n%s\n\nNOVAS SÍNTESES:\n%s'
-                % (tema, ref, sints), 4000).strip()
-    if not re.search(r'\*\*\d+\.', novos):   # nada específico deste tema → não mexe no arquivo
-        return
-    # separa corpo x seção Fontes do arquivo atual
-    m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
-    if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
-    elif atual.strip(): corpo, fontes = atual.rstrip(), '## Fontes'
-    else:            corpo, fontes = '# ' + tema, '## Fontes'
-    corpo += '\n\n' + novos
-    # fonte só dos vídeos que REALMENTE entraram neste tópico
-    for i in novos_ids:
-        if i in novos and i not in fontes:
-            tit = (re.search(r'^#\s*(.+)$', ler(p('sinteses', i + '.md')), re.M) or [None, i])[1].strip()
-            fontes = fontes.rstrip() + '\n- %s · %s' % (tit, i)
-    gravar(p('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
+def rotear(v):
+    """1 chamada de LLM: extrai princípios da síntese, cada um com seu tema-dono único."""
+    sint = ler(p('sinteses', v['id'] + '.md'))
+    out = llm(ROTA_SYS % ', '.join(TAXONOMIA), 'SÍNTESE:\n' + sint[:20000], 3000)
+    princ = []
+    for ln in out.splitlines():
+        parts = [x.strip() for x in ln.split('|||')]
+        if len(parts) >= 3 and parts[0] in TAXONOMIA and parts[1] and parts[2]:
+            princ.append((parts[0], parts[1], parts[2]))
+    return princ
+
+def arquivar(v, princ):
+    """Grava cada princípio no seu tema-dono (append, numeração contínua, fonte única)."""
+    tit = v.get('titulo', v['id']); vid = v['id']
+    porTema = {}
+    for tema, t, c in princ:
+        porTema.setdefault(tema, []).append((t, c))
+    for tema, itens in porTema.items():
+        atual = ler(p('mente', tema + '.md'))
+        prox = len(re.findall(r'\*\*\d+\.', atual)) + 1
+        m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
+        if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
+        elif atual.strip(): corpo, fontes = atual.rstrip(), '## Fontes'
+        else:            corpo, fontes = '# ' + tema, '## Fontes'
+        blocos = []
+        for t, c in itens:
+            blocos.append('**%d. %s.** %s [%s · %s]' % (prox, t.strip().rstrip('.'), c, tit, vid))
+            prox += 1
+        corpo += '\n\n' + '\n\n'.join(blocos)
+        if vid not in fontes:
+            fontes = fontes.rstrip() + '\n- %s · %s' % (tit, vid)
+        gravar(p('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
 
 # ---------- PIPELINE ----------
 def processar(ids=None):
@@ -252,10 +265,10 @@ def processar(ids=None):
         if not ids:
             try: coletar()
             except Exception as e: log('Coletor falhou (segue com a fila atual): %s' % e)
-        temas_novos = {}  # tema -> [video ids]
+        a_rotear = []   # vídeos prontos p/ rotear na mente (cada princípio → 1 tema-dono)
         for v in videos():
             if PROGRESSO['abortar']:
-                log('⛔ Abortado pelo usuário — o que já foi sintetizado consolida na próxima rodada.'); break
+                log('⛔ Abortado pelo usuário — o que já foi sintetizado entra na próxima rodada.'); break
             if ids and v['id'] not in ids: continue
             try:
                 if v['status'] == 'pendente':
@@ -269,23 +282,25 @@ def processar(ids=None):
                     v['status'] = 'transcrito'
                 if v['status'] == 'transcrito':
                     log('Sintetizando: ' + v['titulo'][:60])
-                    for t in sintetizar(v): temas_novos.setdefault(t, []).append(v['id'])
+                    sintetizar(v)
                     v['status'] = 'sintetizado'
-                elif v['status'] == 'sintetizado':  # sintetizado mas nunca consolidado
-                    md = ler(p('sinteses', v['id'] + '.md'))
-                    m = re.search(r'tags:\s*(.+)', md)
-                    for t in ([x.strip() for x in m.group(1).split(',')] if m else []):
-                        if t in TAXONOMIA: temas_novos.setdefault(t, []).append(v['id'])
+                    a_rotear.append(v)
+                elif v['status'] == 'sintetizado':   # sintetizado mas ainda não consolidado
+                    a_rotear.append(v)
             except Exception as e:
                 log('ERRO %s: %s' % (v['id'], e))
-        if PROGRESSO['abortar']: temas_novos = {}
-        for tema, ids in temas_novos.items():
+        if PROGRESSO['abortar']: a_rotear = []
+        consolidados = []
+        for v in a_rotear:
             if PROGRESSO['abortar']: break
-            log('Consolidando tópico: ' + tema)
-            try: consolidar(tema, ids)
-            except Exception as e: log('ERRO consolidação %s: %s' % (tema, e)); continue
-        cons = set(json.loads(ler(p('consolidado.json')) or '[]'))
-        cons |= {i for ids in temas_novos.values() for i in ids}
+            log('Consolidando na mente: ' + v['titulo'][:50])
+            try:
+                princ = rotear(v)
+                if princ: arquivar(v, princ)
+                consolidados.append(v['id'])
+            except Exception as e:
+                log('ERRO consolidação %s: %s' % (v['id'], e)); continue
+        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(consolidados)
         gravar(p('consolidado.json'), json.dumps(sorted(cons)))
         log('Pipeline concluído.')
     except Exception:
