@@ -214,9 +214,11 @@ def sintetizar(v):
     return [t.strip() for t in m.group(1).split(',') if t.strip() in TAXONOMIA] if m else []
 
 # ---------- 3 CONSOLIDADOR (probabilístico, APPEND — só gera os princípios novos) ----------
-CONSOL_SYS = """Você ADICIONA princípios à "mente do Alfredo Soares" (modo append). Receberá os princípios já existentes de um tópico (só referência) e novas sínteses. Gere APENAS os princípios NOVOS que as sínteses acrescentam — NÃO repita, NÃO reescreva e NÃO renumere os existentes. Comece a numerar em %d. Formato, um bloco por princípio:
+CONSOL_SYS = """Você ADICIONA princípios ao tópico "%s" da "mente do Alfredo Soares" (modo append). Receberá os títulos dos princípios já existentes (referência) e novas sínteses.
+RELEVÂNCIA (regra dura): inclua um princípio AQUI só se ele for ESPECIFICAMENTE sobre o tema "%s". Ideia genérica, ou que caiba melhor em outro tema, NÃO entra aqui — omita. É melhor devolver poucos princípios (ou nenhum) do que espalhar a mesma lição em vários temas.
+Gere APENAS os princípios NOVOS e específicos deste tema — NÃO repita, NÃO reescreva e NÃO renumere os existentes. Comece a numerar em %d. Formato, um bloco por princípio:
 **N. Título.** corpo com citação [Nome do vídeo · VIDEOID]
-Se uma síntese só reforça um princípio já existente, faça um princípio novo curto citando o reforço. Não invente. Responda SÓ com os blocos de princípios — sem título e sem a seção ## Fontes."""
+Não invente. Responda SÓ com os blocos de princípios (ou nada, se a síntese não trouxer algo específico deste tema) — sem título e sem a seção ## Fontes."""
 
 def consolidar(tema, novos_ids):
     atual = ler(p('mente', tema + '.md'))
@@ -224,18 +226,20 @@ def consolidar(tema, novos_ids):
     prox = len(titulos) + 1                                # próximo número livre
     ref = '\n'.join(titulos) or '(tópico novo)'
     sints = '\n\n---\n\n'.join(ler(p('sinteses', i + '.md')) for i in novos_ids)
-    novos = llm(CONSOL_SYS % prox,
+    novos = llm(CONSOL_SYS % (tema, tema, prox),
                 'TÓPICO: %s\n\nTÍTULOS DOS PRINCÍPIOS EXISTENTES (só para NÃO duplicar):\n%s\n\nNOVAS SÍNTESES:\n%s'
                 % (tema, ref, sints), 4000).strip()
+    if not re.search(r'\*\*\d+\.', novos):   # nada específico deste tema → não mexe no arquivo
+        return
     # separa corpo x seção Fontes do arquivo atual
     m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
     if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
     elif atual.strip(): corpo, fontes = atual.rstrip(), '## Fontes'
     else:            corpo, fontes = '# ' + tema, '## Fontes'
     corpo += '\n\n' + novos
-    # garante a fonte de cada vídeo novo (por VIDEOID) sem duplicar
+    # fonte só dos vídeos que REALMENTE entraram neste tópico
     for i in novos_ids:
-        if i not in fontes:
+        if i in novos and i not in fontes:
             tit = (re.search(r'^#\s*(.+)$', ler(p('sinteses', i + '.md')), re.M) or [None, i])[1].strip()
             fontes = fontes.rstrip() + '\n- %s · %s' % (tit, i)
     gravar(p('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
