@@ -415,11 +415,14 @@ def api_transcricao():
     vid, txt = d.get('id', ''), (d.get('texto', '') or '').strip()
     if not re.match(r'^[\w-]{11}$', vid): return jsonify({'erro': 'id inválido'}), 400
     if len(txt) < 2500:
-        ignorar(vid, 'curto/short via navegador')
-        return jsonify({'ok': True, 'ignorado': True}, ), 200, resp_headers
+        # NÃO ignora mais (era footgun: glitch de carregamento no navegador travava o vídeo)
+        return jsonify({'ok': True, 'curto': True, 'chars': len(txt)}), 200, resp_headers
     vs = {v['id']: v for v in json.loads(ler(p('videos.json')) or '[]')}
     tit = vs.get(vid, {}).get('titulo', vid)
     gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
+    ign = json.loads(ler(p('ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
+    if vid in ign:
+        gravar(p('ignorados.json'), json.dumps([x for x in ign if x != vid]))
     return jsonify({'ok': True, 'chars': len(txt)}), 200, resp_headers
 
 @app.route('/api/limpar-shorts', methods=['POST'])
