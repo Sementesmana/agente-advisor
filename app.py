@@ -420,6 +420,28 @@ def api_set_duracoes():
     gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True, 'atualizados': n})
 
+@app.route('/api/set-meta', methods=['POST'])
+def api_set_meta():
+    """Corrige título/duração/fonte de vídeos (ex.: os que ficaram sem nome ao adicionar sob bloqueio)."""
+    m = (request.get_json(force=True) or {}).get('metas', {})  # {id: {titulo, dur, fonte}}
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    n = 0
+    for v in vs:
+        if v['id'] in m:
+            mm = m[v['id']]
+            if mm.get('titulo'): v['titulo'] = mm['titulo']
+            if mm.get('dur'): v['dur'] = int(mm['dur'])
+            if mm.get('fonte'): v['fonte'] = mm['fonte']
+            n += 1
+    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    return jsonify({'ok': True, 'atualizados': n})
+
+@app.route('/api/sem-titulo')
+def api_sem_titulo():
+    """Lista vídeos cujo título ficou igual ao id (pro navegador re-buscar os nomes)."""
+    vs = json.loads(ler(p('videos.json')) or '[]')
+    return jsonify([v['id'] for v in vs if v.get('titulo', '') == v['id']])
+
 @app.route('/api/ignorar', methods=['POST'])
 def api_ignorar():
     """Remove uma lista de IDs da fila e manda pros ignorados (usado p/ limpar shorts identificados fora)."""
@@ -436,15 +458,23 @@ def api_abortar():
     return jsonify({'ok': True})
 
 def yt_meta(vid):
-    s = requests.Session()
-    if PROXIES: s.proxies = PROXIES
-    s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
-    j = s.post('https://www.youtube.com/youtubei/v1/player', json={
-        'context': {'client': {'clientName': 'ANDROID', 'clientVersion': '20.10.38',
-                               'androidSdkVersion': 30, 'hl': 'pt', 'gl': 'BR'}},
-        'videoId': vid}, timeout=30).json()
-    d = j.get('videoDetails', {})
-    return {'titulo': d.get('title', vid), 'dur': int(d.get('lengthSeconds', 0) or 0), 'autor': d.get('author', '')}
+    import time
+    for tent in range(3):
+        try:
+            s = requests.Session()
+            if PROXIES: s.proxies = PROXIES
+            s.headers['User-Agent'] = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
+            j = s.post('https://www.youtube.com/youtubei/v1/player', json={
+                'context': {'client': {'clientName': 'ANDROID', 'clientVersion': '20.10.38',
+                                       'androidSdkVersion': 30, 'hl': 'pt', 'gl': 'BR'}},
+                'videoId': vid}, timeout=30).json()
+            d = j.get('videoDetails', {})
+            if d.get('title'):
+                return {'titulo': d['title'], 'dur': int(d.get('lengthSeconds', 0) or 0), 'autor': d.get('author', '')}
+        except Exception:
+            pass
+        if tent < 2: time.sleep(4)
+    return {'titulo': vid, 'dur': 0, 'autor': ''}
 
 def extrair_video_id(tok):
     tok = tok.strip()
