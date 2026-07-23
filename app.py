@@ -281,7 +281,7 @@ def _transcrever_1x(vid):
     return txt
 
 # ---------- 2 ANALISTA (probabilístico) ----------
-SINTESE_SYS = """Você sintetiza vídeos do Alfredo Soares (co-fundador do G4 Educação) para uma base de conhecimento de negócios.
+SINTESE_SYS = """Você sintetiza um vídeo de negócios para uma base de conhecimento. Se o vídeo for uma mesa/entrevista com várias pessoas, ATRIBUA cada conceito/insight a quem o defendeu (coloque o nome entre parênteses ao lado do ponto).
 Responda APENAS com o markdown da síntese, em português, neste formato exato:
 
 # {titulo}
@@ -306,29 +306,35 @@ views: {views}
 ## Temas
 tags: (3-6 tags, OBRIGATORIAMENTE escolhidas desta lista: %s)""" % ', '.join(TAXONOMIA)
 
-def sintetizar(v):
-    txt = ler(pa('transcricoes', v['id'] + '.txt'))
+def sintetizar(v, slug=None):
+    slug = slug or adv_slug()
+    txt = ler(pd(slug, 'transcricoes', v['id'] + '.txt'))
     md = llm(SINTESE_SYS, 'Vídeo: %s (id %s, %s views)\n\nTRANSCRIÇÃO:\n%s' % (v['titulo'], v['id'], v.get('views',''), txt[:180000]))
-    gravar(pa('sinteses', v['id'] + '.md'), md.strip())
+    gravar(pd(slug, 'sinteses', v['id'] + '.md'), md.strip())
     m = re.search(r'tags:\s*(.+)', md)
     return [t.strip() for t in m.group(1).split(',') if t.strip() in TAXONOMIA] if m else []
 
-# ---------- 3 CONSOLIDADOR (roteia cada princípio p/ UM tema-dono; sem duplicar entre temas) ----------
-ROTA_SYS = """Você transforma a síntese de UM vídeo do Alfredo Soares em princípios para a "mente" que TREINA o Advisor (um conselheiro de negócios), roteando cada princípio para UM ÚNICO tema (o mais central).
-Temas válidos (use exatamente estes slugs): %s
+# ---------- 3 CONSOLIDADOR (roteia cada princípio p/ UM tema-dono; filtra por locutor) ----------
+ROTA_SYS = """Você transforma a síntese de UM vídeo em princípios para a "mente" que TREINA o Advisor **%(nome)s** (um conselheiro de negócios), roteando cada princípio para UM ÚNICO tema (o mais central).
+
+ATRIBUIÇÃO POR LOCUTOR (importante): o vídeo pode ser uma MESA/ENTREVISTA com várias pessoas. Extraia para a mente de %(nome)s SOMENTE os princípios que o PRÓPRIO %(nome)s defendeu ou disse. Ignore o que outra pessoa nomeada (que não seja %(nome)s) claramente defendeu. Se for uma fala SOLO de %(nome)s — ou não dá pra distinguir quem falou — aproveite todos os princípios fortes. Trate variações de grafia do nome como a mesma pessoa (ex.: Dener/Denner, Lipert/Lippert, Lázaro/Lasaro).
+
+Temas válidos (use exatamente estes slugs): %(temas)s
 Regras:
 - Cada princípio vai para UM tema só — o mais específico. NUNCA coloque a mesma ideia em temas diferentes.
-- Gere de 4 a 10 princípios NO TOTAL (não por tema), cobrindo o que o vídeo tem de mais forte.
+- Gere de 4 a 10 princípios NO TOTAL (não por tema), cobrindo o que %(nome)s tem de mais forte. Se %(nome)s falou pouco, gere menos — só o que é dele.
 - Título curto (3-6 palavras).
 - Corpo RICO, em UMA única linha (NÃO quebre linha dentro do princípio), com 2 a 4 frases trazendo: (1) o princípio, (2) o MECANISMO / como aplicar na prática, e (3) os números, nomes, cases e valores concretos citados. Escreva como orientação de consultor: específico e acionável, nunca genérico.
 - Não invente; use só o que está na síntese.
 SAÍDA: uma linha por princípio, no formato EXATO abaixo (sem markdown, sem numeração, sem nada além das linhas):
 tema-slug ||| Título curto ||| corpo do princípio"""
 
-def rotear(v):
-    """1 chamada de LLM: extrai princípios da síntese, cada um com seu tema-dono único."""
-    sint = ler(pa('sinteses', v['id'] + '.md'))
-    out = llm(ROTA_SYS % ', '.join(TAXONOMIA), 'SÍNTESE:\n' + sint[:20000], 4500)
+def rotear(v, nome=None, slug=None):
+    """1 chamada de LLM: extrai princípios da síntese (só do locutor 'nome'), cada um com seu tema-dono."""
+    slug = slug or adv_slug()
+    nome = nome or next((a['nome'] for a in advisors() if a['slug'] == slug), slug)
+    sint = ler(pd(slug, 'sinteses', v['id'] + '.md'))
+    out = llm(ROTA_SYS % {'nome': nome, 'temas': ', '.join(TAXONOMIA)}, 'SÍNTESE:\n' + sint[:20000], 4500)
     princ = []
     for ln in out.splitlines():
         parts = [x.strip() for x in ln.split('|||')]
@@ -336,14 +342,15 @@ def rotear(v):
             princ.append((parts[0], parts[1], parts[2]))
     return princ
 
-def arquivar(v, princ):
-    """Grava cada princípio no seu tema-dono (append, numeração contínua, fonte única)."""
+def arquivar(v, princ, slug=None):
+    """Grava cada princípio no seu tema-dono do advisor (append, numeração contínua, fonte única)."""
+    slug = slug or adv_slug()
     tit = v.get('titulo', v['id']); vid = v['id']
     porTema = {}
     for tema, t, c in princ:
         porTema.setdefault(tema, []).append((t, c))
     for tema, itens in porTema.items():
-        atual = ler(pa('mente', tema + '.md'))
+        atual = ler(pd(slug, 'mente', tema + '.md'))
         prox = len(re.findall(r'\*\*\d+\.', atual)) + 1
         m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
         if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
@@ -356,7 +363,43 @@ def arquivar(v, princ):
         corpo += '\n\n' + '\n\n'.join(blocos)
         if vid not in fontes:
             fontes = fontes.rstrip() + '\n- %s · %s' % (tit, vid)
-        gravar(pa('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
+        gravar(pd(slug, 'mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
+
+def remover_video_da_mente(slug, vid):
+    """Tira da mente do advisor todos os princípios citados daquele vídeo; renumera e conserta Fontes."""
+    for f in glob.glob(pd(slug, 'mente', '*.md')):
+        if f.endswith('persona.md'): continue
+        raw = ler(f)
+        mf = re.search(r'\n##\s*Fontes\b[\s\S]*$', raw)
+        corpo, fontes = (raw[:mf.start()], raw[mf.start():]) if mf else (raw, '')
+        blocos = re.split(r'(?=\*\*\d+\.)', corpo)
+        cabecalho = blocos[0].rstrip()
+        mantidos = [b.strip() for b in blocos[1:] if ('· ' + vid + ']') not in b]
+        renum = []
+        for i, b in enumerate(mantidos, 1):
+            renum.append(re.sub(r'^\*\*\d+\.', '**%d.' % i, b))
+        if fontes:
+            linhas = [ln for ln in fontes.splitlines() if ('· ' + vid) not in ln]
+            fontes = '\n'.join(linhas).strip()
+        novo = cabecalho
+        if renum: novo += '\n\n' + '\n\n'.join(renum)
+        if fontes: novo += '\n\n' + fontes
+        gravar(f, novo.strip() + '\n')
+
+def reconsolidar_video(target_slug, vid):
+    """Recorta a mente do advisor p/ este vídeo: remove o que estava e re-roteia SÓ os princípios dele (filtro por locutor)."""
+    nome = next((a['nome'] for a in advisors() if a['slug'] == target_slug), target_slug)
+    v = next((x for x in json.loads(ler(pd(target_slug, 'videos.json')) or '[]') if x['id'] == vid), {'id': vid, 'titulo': vid})
+    if not os.path.exists(pd(target_slug, 'sinteses', vid + '.md')):
+        if not ler(pd(target_slug, 'transcricoes', vid + '.txt')):
+            return {'erro': 'sem transcrição desse vídeo no advisor'}
+        sintetizar(v, target_slug)
+    remover_video_da_mente(target_slug, vid)
+    princ = rotear(v, nome, target_slug)
+    if princ: arquivar(v, princ, target_slug)
+    cons = set(json.loads(ler(pd(target_slug, 'consolidado.json')) or '[]')) | {vid}
+    gravar(pd(target_slug, 'consolidado.json'), json.dumps(sorted(cons)))
+    return {'ok': True, 'principios': len(princ)}
 
 # ---------- PIPELINE ----------
 def processar(ids=None):
@@ -748,6 +791,20 @@ def api_processar():
     ids = (request.get_json(silent=True) or {}).get('ids')
     threading.Thread(target=processar, args=(ids,), daemon=True).start()
     return jsonify({'ok': True})
+
+@app.route('/api/reconsolidar', methods=['POST'])
+def api_reconsolidar():
+    """Recorta a mente de UM advisor p/ UM vídeo (filtro por locutor). Síncrono: usa LLM, pode levar alguns segundos."""
+    d = request.get_json(force=True) or {}
+    slug, vid = d.get('advisor', ''), d.get('id', '')
+    if not any(a['slug'] == slug for a in advisors()):
+        return jsonify({'erro': 'advisor não encontrado'}), 400
+    if not re.match(r'^[\w-]{11}$', vid):
+        return jsonify({'erro': 'id inválido'}), 400
+    try:
+        return jsonify(reconsolidar_video(slug, vid))
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
 
 @app.route('/api/ordem', methods=['POST'])
 def api_ordem():
