@@ -214,12 +214,13 @@ def sintetizar(v):
     return [t.strip() for t in m.group(1).split(',') if t.strip() in TAXONOMIA] if m else []
 
 # ---------- 3 CONSOLIDADOR (roteia cada princípio p/ UM tema-dono; sem duplicar entre temas) ----------
-ROTA_SYS = """Você transforma a síntese de UM vídeo do Alfredo Soares em princípios para a "mente", roteando cada princípio para UM ÚNICO tema (o mais central).
+ROTA_SYS = """Você transforma a síntese de UM vídeo do Alfredo Soares em princípios para a "mente" que TREINA o Advisor (um conselheiro de negócios), roteando cada princípio para UM ÚNICO tema (o mais central).
 Temas válidos (use exatamente estes slugs): %s
 Regras:
 - Cada princípio vai para UM tema só — o mais específico. NUNCA coloque a mesma ideia em temas diferentes.
-- Gere de 4 a 10 princípios NO TOTAL (não por tema), cobrindo o que o vídeo tem de mais forte e prático.
-- Título curto (3-6 palavras). Corpo denso (1-3 frases) com o insight acionável e os números/nomes citados.
+- Gere de 4 a 10 princípios NO TOTAL (não por tema), cobrindo o que o vídeo tem de mais forte.
+- Título curto (3-6 palavras).
+- Corpo RICO, em UMA única linha (NÃO quebre linha dentro do princípio), com 2 a 4 frases trazendo: (1) o princípio, (2) o MECANISMO / como aplicar na prática, e (3) os números, nomes, cases e valores concretos citados. Escreva como orientação de consultor: específico e acionável, nunca genérico.
 - Não invente; use só o que está na síntese.
 SAÍDA: uma linha por princípio, no formato EXATO abaixo (sem markdown, sem numeração, sem nada além das linhas):
 tema-slug ||| Título curto ||| corpo do princípio"""
@@ -227,7 +228,7 @@ tema-slug ||| Título curto ||| corpo do princípio"""
 def rotear(v):
     """1 chamada de LLM: extrai princípios da síntese, cada um com seu tema-dono único."""
     sint = ler(p('sinteses', v['id'] + '.md'))
-    out = llm(ROTA_SYS % ', '.join(TAXONOMIA), 'SÍNTESE:\n' + sint[:20000], 3000)
+    out = llm(ROTA_SYS % ', '.join(TAXONOMIA), 'SÍNTESE:\n' + sint[:20000], 4500)
     princ = []
     for ln in out.splitlines():
         parts = [x.strip() for x in ln.split('|||')]
