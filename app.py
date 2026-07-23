@@ -502,6 +502,29 @@ def chat(pergunta, historico, empresa_slug=None, area_slug=None, advisor_slug=No
     r.raise_for_status()
     return ''.join(b.get('text', '') for b in r.json().get('content', []))
 
+# ---------- MESA REDONDA: vários advisors opinam + moderador sintetiza ----------
+MESA_SYS = """Você é o MODERADOR de uma mesa redonda de conselheiros de negócios. Recebeu o parecer INDEPENDENTE de cada advisor sobre a MESMA pergunta do empresário.
+Entregue UM conselho unificado da mesa, em português, nesta estrutura EXATA (use os títulos):
+**Consenso** — os pontos em que os conselheiros concordam.
+**Divergências** — onde discordam e por quê (diga qual advisor defende cada lado).
+**Plano de ação da mesa** — os passos concretos recomendados, com a conta feita quando houver números.
+Regras: não invente; use só o que os pareceres trazem. Seja direto e específico; sintetize, não repita cada parecer por extenso."""
+
+def mesa(pergunta, historico, slugs, empresa_slug=None, area_slug=None):
+    """Cada advisor responde pela mente dele (reusa chat); depois o moderador costura o conselho da mesa."""
+    validos = [s for s in slugs if any(x['slug'] == s for x in advisors())]
+    pareceres = []
+    for s in validos:
+        nome = next((a['nome'] for a in advisors() if a['slug'] == s), s)
+        try:
+            resp = chat(pergunta, historico, empresa_slug, area_slug, s)
+        except Exception as e:
+            resp = '(não consegui o parecer: %s)' % e
+        pareceres.append({'slug': s, 'nome': nome, 'resposta': resp})
+    corpo = '\n\n'.join('### Parecer de %s\n%s' % (pp['nome'], pp['resposta']) for pp in pareceres)
+    sintese = llm(MESA_SYS, 'PERGUNTA DO EMPRESÁRIO:\n%s\n\nPARECERES DA MESA:\n%s' % (pergunta, corpo), 3000, MODEL)
+    return pareceres, sintese
+
 # ---------- API ----------
 @app.route('/api/estado')
 def api_estado():
@@ -861,6 +884,24 @@ def api_chat():
         e = _empresa_por_slug(emp_slug)
         item = registrar_conversa(d.get('pergunta', ''), resp, e['nome'] if e else '', e['slug'] if e else '', area or '')
         return jsonify({'resposta': resp, 'id': item['id'], 'data': item['data'], 'empresa': item['empresa'], 'area': area or ''})
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/mesa', methods=['POST'])
+def api_mesa():
+    d = request.get_json(force=True)
+    slugs = d.get('advisors') or []
+    if len([s for s in slugs if any(x['slug'] == s for x in advisors())]) < 2:
+        return jsonify({'erro': 'escolha pelo menos 2 advisors pra mesa'}), 400
+    emp_slug, area = d.get('empresa') or None, d.get('area') or None
+    try:
+        pareceres, sintese = mesa(d.get('pergunta', ''), d.get('historico', []), slugs, emp_slug, area)
+        e = _empresa_por_slug(emp_slug)
+        nomes = ', '.join(pp['nome'] for pp in pareceres)
+        item = registrar_conversa(d.get('pergunta', ''), sintese, e['nome'] if e else '',
+                                  e['slug'] if e else '', 'Mesa: ' + nomes)
+        return jsonify({'pareceres': pareceres, 'sintese': sintese,
+                        'id': item['id'], 'data': item['data'], 'empresa': item['empresa']})
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
 

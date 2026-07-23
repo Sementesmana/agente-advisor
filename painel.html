@@ -100,12 +100,16 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 
 <div class="tab" id="t-chat">
 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-  <span style="font-size:13px;color:var(--dim)">Falar com:</span>
-  <select id="chatadv" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
+  <span id="falarcom-wrap"><span style="font-size:13px;color:var(--dim)">Falar com:</span>
+  <select id="chatadv" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select></span>
   <span style="font-size:13px;color:var(--dim);margin-left:6px">sobre:</span>
   <select id="chat-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
   <select id="chat-area" style="background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 12px;color:var(--tx);font-size:13.5px"></select>
   <button class="back" id="limpar-chat" style="margin-left:auto">🗑 Limpar conversa</button>
+</div>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+  <label style="font-size:13px;color:var(--gold2);cursor:pointer;font-weight:700;user-select:none"><input type="checkbox" id="mesa-toggle" style="vertical-align:middle;margin-right:5px">🎲 Mesa redonda</label>
+  <span id="mesa-adv" style="display:none;gap:6px;flex-wrap:wrap;align-items:center"></span>
 </div>
 <div id="chatlog"><div class="msg a" id="greet">E aí! Sou o teu advisor — estudei a fundo o método do Alfredo Soares. Me conta o desafio: modelo de negócio, vendas, canal, gente, escala... e já te devolvo com plano e a conta feita. Bora?</div></div>
 <div class="chatrow"><textarea id="q" placeholder="Ex.: como estruturo a rede de consultores da Maná pra vender mais soja premium?"></textarea><button class="btn" id="send">Enviar</button></div>
@@ -203,10 +207,38 @@ function renderAdvisors(lst,at){
     window.chatAdvisor=cur;
     sel.innerHTML=lst.map(a=>`<option value="${a.slug}" ${a.slug===cur?'selected':''}>${a.nome}</option>`).join('');
   }
+  renderMesaChips();
   aplicarGreet();
 }
 function advNome(slug){const a=(window.ADVS||[]).find(x=>x.slug===slug);return a?a.nome:'';}
-function aplicarGreet(){const g=$('#greet');const nome=advNome(window.chatAdvisor)||(window.ATIVO||{}).nome;if(g&&nome)g.textContent='E aí! Sou o '+nome+', teu advisor. Me conta o desafio — modelo de negócio, vendas, canal, gente, escala... — e já te devolvo com plano e a conta feita. Bora?';}
+function aplicarGreet(){const g=$('#greet');if(!g)return;if(window.mesaMode){g.textContent='🎲 Mesa redonda: marque 2 ou mais conselheiros acima e faça a pergunta — cada um opina e eu te devolvo o Conselho da Mesa.';return;}const nome=advNome(window.chatAdvisor)||(window.ATIVO||{}).nome;if(nome)g.textContent='E aí! Sou o '+nome+', teu advisor. Me conta o desafio — modelo de negócio, vendas, canal, gente, escala... — e já te devolvo com plano e a conta feita. Bora?';}
+function renderMesaChips(){
+  const box=$('#mesa-adv'); if(!box)return;
+  window.mesaSel=window.mesaSel||new Set();
+  const lst=window.ADVS||[];
+  box.innerHTML='<span style="font-size:12px;color:var(--dim)">na mesa:</span>'+lst.map(a=>{
+    const on=window.mesaSel.has(a.slug);
+    return `<span class="advchip ${on?'on':''}" onclick="toggleMesa('${a.slug}')">`+
+      (a.foto?`<img src="/api/advisor-foto/${a.slug}">`:`<span class="ini">${iniciais(a.nome)}</span>`)+a.nome+'</span>';
+  }).join('');
+}
+window.toggleMesa=slug=>{window.mesaSel=window.mesaSel||new Set();window.mesaSel.has(slug)?window.mesaSel.delete(slug):window.mesaSel.add(slug);renderMesaChips();};
+function setMesaMode(on){
+  window.mesaMode=on;
+  const fw=$('#falarcom-wrap'); if(fw)fw.style.display=on?'none':'';
+  const box=$('#mesa-adv'); if(box)box.style.display=on?'inline-flex':'none';
+  if(on&&(!window.mesaSel||window.mesaSel.size<2)){ // pré-marca ativo + o 1o diferente
+    window.mesaSel=new Set([window.chatAdvisor||(window.ATIVO||{}).slug]);
+    (window.ADVS||[]).forEach(a=>{if(window.mesaSel.size<2)window.mesaSel.add(a.slug);});
+    renderMesaChips();
+  }
+  aplicarGreet();
+}
+function renderMesa(d){
+  const cards=(d.pareceres||[]).map(p=>`<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0"><div style="color:var(--gold2);font-weight:700;margin-bottom:6px">🗣 ${p.nome}</div>${md2html(p.resposta)}</div>`).join('');
+  const con=`<div style="background:#13251a;border:1px solid var(--green);border-radius:10px;padding:14px 16px;margin-top:12px"><div style="color:var(--green);font-weight:800;margin-bottom:6px">🤝 Conselho da Mesa</div>${md2html(d.sintese)}</div>`;
+  return '<div style="font-size:12px;color:var(--dim);margin:2px 0 4px">Pareceres individuais</div>'+cards+con;
+}
 window.trocarAdvisor=async slug=>{await fetch('/api/advisor-ativo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug})});location.reload();};
 window.modalAdvisor=slug=>{
   const a=slug?(window.ADVS||[]).find(x=>x.slug===slug):null;
@@ -282,19 +314,29 @@ async function salvarOrdem(){
 }
 async function enviar(){
   const q=$('#q').value.trim();if(!q)return;
+  const emMesa=!!window.mesaMode;
+  if(emMesa&&(!window.mesaSel||window.mesaSel.size<2)){ alert('Marque pelo menos 2 conselheiros pra mesa redonda.'); return; }
   $('#q').value='';
   $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg u"></div>`);
   $('#chatlog').lastChild.textContent=q;
-  $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a">pensando...</div>`);
+  $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a">${emMesa?'reunindo a mesa (cada conselheiro está opinando)...':'pensando...'}</div>`);
   const el=$('#chatlog').lastChild;el.scrollIntoView();
   try{
     const emp=$('#chat-emp').value, area=$('#chat-area').value;
-    const advisor=($('#chatadv')&&$('#chatadv').value)||window.chatAdvisor||'';
-    const d=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({pergunta:q,historico:HIST,empresa:emp,area:area,advisor})}).then(r=>r.json());
-    if(d.erro){el.textContent='Erro: '+d.erro;return;}
-    el.innerHTML=md2html(d.resposta)+botaoExport(q,d.resposta,d.empresa,d.data);
-    HIST.push({role:'user',content:q},{role:'assistant',content:d.resposta});HIST=HIST.slice(-8);
+    if(emMesa){
+      const advisors=[...window.mesaSel];
+      const d=await fetch('/api/mesa',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({pergunta:q,empresa:emp,area:area,advisors})}).then(r=>r.json());
+      if(d.erro){el.textContent='Erro: '+d.erro;return;}
+      el.innerHTML=renderMesa(d);
+    }else{
+      const advisor=($('#chatadv')&&$('#chatadv').value)||window.chatAdvisor||'';
+      const d=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({pergunta:q,historico:HIST,empresa:emp,area:area,advisor})}).then(r=>r.json());
+      if(d.erro){el.textContent='Erro: '+d.erro;return;}
+      el.innerHTML=md2html(d.resposta)+botaoExport(q,d.resposta,d.empresa,d.data);
+      HIST.push({role:'user',content:q},{role:'assistant',content:d.resposta});HIST=HIST.slice(-8);
+    }
   }catch(e){el.textContent='Erro de conexão: '+e;}
   el.scrollIntoView();
 }
@@ -444,7 +486,10 @@ ctx();
 carregarSelEmp();
 $('#send').onclick=enviar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
-document.addEventListener('change',e=>{ if(e.target&&e.target.id==='chatadv'){ window.chatAdvisor=e.target.value; HIST=[]; aplicarGreet(); $('#chatlog').innerHTML=''; $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a" id="greet"></div>`); aplicarGreet(); } });
+document.addEventListener('change',e=>{
+  if(e.target&&e.target.id==='chatadv'){ window.chatAdvisor=e.target.value; HIST=[]; aplicarGreet(); $('#chatlog').innerHTML=''; $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a" id="greet"></div>`); aplicarGreet(); }
+  if(e.target&&e.target.id==='mesa-toggle'){ setMesaMode(e.target.checked); }
+});
 estado();
 </script>
 </div></body></html>
