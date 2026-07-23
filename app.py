@@ -22,7 +22,8 @@ if DATA != _SEED and not os.path.exists(os.path.join(DATA, 'advisors.json')) \
 # ---------- MULTI-ADVISOR: dados do advisor ficam em data/advisors/<slug>/ ----------
 ADVISOR_PADRAO = {'slug': 'alfredo-soares', 'nome': 'Alfredo Soares',
                   'descricao': 'Co-fundador do G4 Educação e da VTEX Brasil. Vendas, varejo e marca.',
-                  'foto': '', 'ativo': True}
+                  'foto': '', 'canal': os.environ.get('YT_CHANNEL_ID', 'UCh9HMS4C3F02msM-kiilAdA'),
+                  'ativo': True}
 # chaves de dados que pertencem a UM advisor (o resto — ctx/, conversas.json — é compartilhado)
 _ADV_DIRS = ('mente', 'sinteses', 'transcricoes')
 _ADV_JSONS = ('videos.json', 'consolidado.json', 'ignorados.json')
@@ -102,9 +103,32 @@ def advisor_ativo():
 def adv_slug():
     return advisor_ativo().get('slug', ADVISOR_PADRAO['slug'])
 
+def pd(slug, *a):
+    """Caminho dentro de UM advisor específico: data/advisors/<slug>/..."""
+    return os.path.join(DATA, 'advisors', slug, *a)
+
 def pa(*a):
     """Caminho DENTRO do advisor ativo: data/advisors/<slug>/..."""
-    return os.path.join(DATA, 'advisors', adv_slug(), *a)
+    return pd(adv_slug(), *a)
+
+def canal_do_advisor():
+    return advisor_ativo().get('canal') or YT_CHANNEL_ID
+
+def resolver_canal(canal):
+    """Aceita id UC..., URL de canal ou @handle → devolve o channel_id (UC...) pro RSS."""
+    canal = (canal or '').strip()
+    m = re.search(r'(UC[\w-]{22})', canal)
+    if m: return m.group(1)
+    h = re.search(r'@([\w.\-]+)', canal)
+    if h:
+        try:
+            r = requests.get('https://www.youtube.com/@' + h.group(1), timeout=30,
+                             headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
+            mm = re.search(r'"(?:channelId|externalId)":"(UC[\w-]{22})"', r.text)
+            if mm: return mm.group(1)
+        except Exception:
+            pass
+    return canal or YT_CHANNEL_ID
 
 def videos():
     vs = json.loads(ler(pa('videos.json')) or '[]')
@@ -159,9 +183,10 @@ def dur_seg(vid):
     except Exception:
         return 0
 
-def coletar():
-    """Só RSS — rápido, traz todos os vídeos do canal pra fila (a limpeza de shorts é botão separado)."""
-    r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + YT_CHANNEL_ID,
+def coletar(cid=None):
+    """Só RSS — rápido, traz todos os vídeos do canal DO ADVISOR ATIVO pra fila (limpeza de shorts é botão separado)."""
+    cid = resolver_canal(cid or canal_do_advisor())
+    r = requests.get('https://www.youtube.com/feeds/videos.xml?channel_id=' + cid,
                      timeout=30, headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
     r.raise_for_status()
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
@@ -441,9 +466,10 @@ def contexto_para_chat(empresa_slug=None, area_slug=None):
     return ('\n\n'.join(partes))[:150000]
 
 # ---------- 4 PERSONA / CHAT ----------
-def chat(pergunta, historico, empresa_slug=None, area_slug=None):
-    persona = ler(pa('mente', 'persona.md'))
-    mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(pa('mente', '*.md'))) if not f.endswith('persona.md'))
+def chat(pergunta, historico, empresa_slug=None, area_slug=None, advisor_slug=None):
+    aslug = advisor_slug if (advisor_slug and any(x['slug'] == advisor_slug for x in advisors())) else adv_slug()
+    persona = ler(pd(aslug, 'mente', 'persona.md'))
+    mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(pd(aslug, 'mente', '*.md'))) if not f.endswith('persona.md'))
     ctx = contexto_para_chat(empresa_slug, area_slug)
     sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
           (('\n\n=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n' + ctx) if ctx else '') + \
@@ -804,8 +830,9 @@ def registrar_conversa(pergunta, resposta, emp_nome='', emp_slug='', area=''):
 def api_chat():
     d = request.get_json(force=True)
     emp_slug, area = d.get('empresa') or None, d.get('area') or None
+    adv = d.get('advisor') or None
     try:
-        resp = chat(d.get('pergunta', ''), d.get('historico', []), emp_slug, area)
+        resp = chat(d.get('pergunta', ''), d.get('historico', []), emp_slug, area, adv)
         e = _empresa_por_slug(emp_slug)
         item = registrar_conversa(d.get('pergunta', ''), resp, e['nome'] if e else '', e['slug'] if e else '', area or '')
         return jsonify({'resposta': resp, 'id': item['id'], 'data': item['data'], 'empresa': item['empresa'], 'area': area or ''})
@@ -902,9 +929,10 @@ def api_advisor_novo():
     if any(x['slug'] == slug for x in lst):
         return jsonify({'erro': 'já existe um advisor com esse nome'}), 400
     desc = (d.get('descricao', '') or '').strip()
+    canal = (d.get('canal', '') or '').strip()
     criar_advisor_dados(slug, nome, desc)
     for x in lst: x['ativo'] = False
-    lst.append({'slug': slug, 'nome': nome, 'descricao': desc, 'foto': '', 'ativo': True})
+    lst.append({'slug': slug, 'nome': nome, 'descricao': desc, 'foto': '', 'canal': canal, 'ativo': True})
     salvar_advisors(lst)
     return jsonify({'ok': True, 'slug': slug})
 
@@ -918,8 +946,31 @@ def api_advisor_editar(slug):
     if not x: return jsonify({'erro': 'não encontrado'}), 404
     if d.get('nome'): x['nome'] = d['nome'].strip()
     if 'descricao' in d: x['descricao'] = (d.get('descricao') or '').strip()
+    if 'canal' in d: x['canal'] = (d.get('canal') or '').strip()
     salvar_advisors(lst)
     return jsonify({'ok': True})
+
+@app.route('/api/advisor/<slug>', methods=['DELETE'])
+def api_advisor_del(slug):
+    """Exclui um advisor do registro. Os dados NÃO são apagados: a pasta é renomeada
+    p/ _deleted-<slug> (recuperável). Não deixa excluir o único advisor."""
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    lst = advisors()
+    if len(lst) <= 1: return jsonify({'erro': 'não dá pra excluir o único advisor'}), 400
+    if not any(a['slug'] == slug for a in lst): return jsonify({'erro': 'não encontrado'}), 404
+    era_ativo = any(a['slug'] == slug and a.get('ativo') for a in lst)
+    lst = [a for a in lst if a['slug'] != slug]
+    if era_ativo and lst: lst[0]['ativo'] = True
+    salvar_advisors(lst)
+    import shutil
+    src = os.path.join(DATA, 'advisors', slug)
+    if os.path.isdir(src):
+        dest = os.path.join(DATA, 'advisors', '_deleted-' + slug)
+        i = 1
+        while os.path.exists(dest):
+            dest = os.path.join(DATA, 'advisors', '_deleted-%s-%d' % (slug, i)); i += 1
+        shutil.move(src, dest)
+    return jsonify({'ok': True, 'ativo': (lst[0]['slug'] if lst else None)})
 
 @app.route('/api/advisor-foto/<slug>', methods=['POST'])
 def api_advisor_foto_up(slug):

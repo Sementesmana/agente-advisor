@@ -56,6 +56,25 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <div class="warn" id="gw-warn">⚠ Gateway LLM não configurado (LLM_GATEWAY_URL / LLM_GATEWAY_KEY). O pipeline de síntese e o chat ficam indisponíveis até configurar as variáveis no Railway.</div>
 <nav><button class="on" data-t="t-pipe">Pipeline</button><button data-t="t-mente">A Mente</button><button data-t="t-chat">Advisor</button><button data-t="t-hist">Histórico</button><button data-t="t-ctx">Contexto</button></nav>
 
+<div id="adv-modal" style="display:none;position:fixed;inset:0;background:#000b;z-index:50;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(460px,94vw)">
+    <h3 id="adv-modal-tit" style="color:var(--gold2);font-size:16px;margin-bottom:14px">Novo advisor</h3>
+    <label style="font-size:12px;color:var(--dim)">Nome</label>
+    <input id="adv-nome" placeholder="Ex.: Flavio Augusto" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:14px;margin:4px 0 12px">
+    <label style="font-size:12px;color:var(--dim)">Descrição (quem é, foco de atuação)</label>
+    <textarea id="adv-desc" rows="2" placeholder="Ex.: Fundador da Wise Up e do G4. Vendas, gestão e alta performance." style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13.5px;font-family:inherit;resize:vertical;margin:4px 0 12px"></textarea>
+    <label style="font-size:12px;color:var(--dim)">Canal do YouTube — id UC..., URL do canal ou @handle (opcional)</label>
+    <input id="adv-canal" placeholder="Ex.: @flavioaugustooficial ou UCxxxxxxxx" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:14px;margin:4px 0 12px">
+    <label style="font-size:12px;color:var(--dim)">Foto (opcional)</label>
+    <input type="file" id="adv-foto" accept="image/*" style="width:100%;color:var(--dim);font-size:12.5px;margin:4px 0 16px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn" id="adv-save" onclick="salvarAdvisor()">Salvar</button>
+      <button class="back" onclick="fecharModalAdvisor()" style="margin-bottom:0">Cancelar</button>
+      <button class="back" id="adv-del" onclick="excluirAdvisor()" style="margin-bottom:0;margin-left:auto;border-color:#6a2a2a;color:#e88">Excluir</button>
+    </div>
+  </div>
+</div>
+
 <div class="tab on" id="t-pipe">
 <button class="btn" id="buscar" style="background:var(--panel2);color:var(--gold2);border:1px solid var(--gold)">&#8635; Buscar vídeos novos</button>
 <button class="btn" id="limpar" style="background:var(--panel2);color:#e8b87a;border:1px solid #6a4a2a">&#129529; Limpar shorts</button>
@@ -81,7 +100,9 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 
 <div class="tab" id="t-chat">
 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-  <span style="font-size:13px;color:var(--dim)">Consultando sobre:</span>
+  <span style="font-size:13px;color:var(--dim)">Falar com:</span>
+  <select id="chatadv" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
+  <span style="font-size:13px;color:var(--dim);margin-left:6px">sobre:</span>
   <select id="chat-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:8px 12px;color:var(--gold2);font-size:13.5px;font-weight:700"></select>
   <select id="chat-area" style="background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 12px;color:var(--tx);font-size:13.5px"></select>
   <button class="back" id="limpar-chat" style="margin-left:auto">🗑 Limpar conversa</button>
@@ -166,20 +187,60 @@ async function estado(){
 }
 function iniciais(n){return (n||'?').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase();}
 function renderAdvisors(lst,at){
-  if(!$('#hdr'))return;
-  const pic=at.foto?`<img class="advpic" src="/api/advisor-foto/${at.slug}?t=${Date.now()}">`:`<div class="logo">${iniciais(at.nome)}</div>`;
-  const chips=lst.map(a=>`<div class="advchip ${a.slug===at.slug?'on':''}" onclick="trocarAdvisor('${a.slug}')">`+
-      (a.foto?`<img src="/api/advisor-foto/${a.slug}">`:`<span class="ini">${iniciais(a.nome)}</span>`)+`${a.nome}</div>`).join('');
-  $('#hdr').innerHTML=pic+`<div style="flex:1"><h1>ADVISOR <span>${(at.nome||'').toUpperCase()}</span></h1>`+
-    `<div class="advswitch">${chips}`+
-    `<button class="advadd" onclick="novoAdvisor()">+ novo advisor</button>`+
-    `<button class="advadd" style="border-style:solid" onclick="trocarFoto('${at.slug}')">📷 foto</button></div></div>`;
-  const g=$('#greet');
-  if(g&&at.nome)g.textContent='E aí! Sou o '+at.nome+', teu advisor. Me conta o desafio — modelo de negócio, vendas, canal, gente, escala... — e já te devolvo com plano e a conta feita. Bora?';
+  window.ADVS=lst; window.ATIVO=at;
+  if($('#hdr')){
+    const pic=at.foto?`<img class="advpic" src="/api/advisor-foto/${at.slug}?t=${Date.now()}">`:`<div class="logo">${iniciais(at.nome)}</div>`;
+    const chips=lst.map(a=>`<div class="advchip ${a.slug===at.slug?'on':''}" onclick="trocarAdvisor('${a.slug}')">`+
+        (a.foto?`<img src="/api/advisor-foto/${a.slug}">`:`<span class="ini">${iniciais(a.nome)}</span>`)+`${a.nome}</div>`).join('');
+    $('#hdr').innerHTML=pic+`<div style="flex:1"><h1>ADVISOR <span>${(at.nome||'').toUpperCase()}</span></h1>`+
+      `<div class="advswitch">${chips}`+
+      `<button class="advadd" onclick="modalAdvisor(null)">+ novo advisor</button>`+
+      `<button class="advadd" style="border-style:solid" onclick="modalAdvisor('${at.slug}')">&#9998; editar</button></div></div>`;
+  }
+  const sel=$('#chatadv');
+  if(sel){
+    const cur=(window.chatAdvisor&&lst.some(a=>a.slug===window.chatAdvisor))?window.chatAdvisor:at.slug;
+    window.chatAdvisor=cur;
+    sel.innerHTML=lst.map(a=>`<option value="${a.slug}" ${a.slug===cur?'selected':''}>${a.nome}</option>`).join('');
+  }
+  aplicarGreet();
 }
+function advNome(slug){const a=(window.ADVS||[]).find(x=>x.slug===slug);return a?a.nome:'';}
+function aplicarGreet(){const g=$('#greet');const nome=advNome(window.chatAdvisor)||(window.ATIVO||{}).nome;if(g&&nome)g.textContent='E aí! Sou o '+nome+', teu advisor. Me conta o desafio — modelo de negócio, vendas, canal, gente, escala... — e já te devolvo com plano e a conta feita. Bora?';}
 window.trocarAdvisor=async slug=>{await fetch('/api/advisor-ativo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug})});location.reload();};
-window.novoAdvisor=async()=>{const nome=prompt('Nome do novo advisor (ex.: Flavio Augusto):');if(!nome||!nome.trim())return;const descricao=prompt('Descrição curta (quem é, foco de atuação):')||'';const r=await fetch('/api/advisor',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({nome,descricao})}).then(r=>r.json());if(r.erro){alert(r.erro);return;}location.reload();};
-window.trocarFoto=slug=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=async()=>{const f=i.files[0];if(!f)return;const fd=new FormData();fd.append('arquivo',f);const r=await fetch('/api/advisor-foto/'+slug,{method:'POST',body:fd}).then(r=>r.json());if(r.erro){alert(r.erro);return;}location.reload();};i.click();};
+window.modalAdvisor=slug=>{
+  const a=slug?(window.ADVS||[]).find(x=>x.slug===slug):null;
+  $('#adv-modal-tit').textContent=a?('Editar '+a.nome):'Novo advisor';
+  $('#adv-nome').value=a?a.nome:''; $('#adv-desc').value=a?(a.descricao||''):'';
+  $('#adv-canal').value=a?(a.canal||''):''; $('#adv-foto').value='';
+  $('#adv-modal').dataset.slug=slug||'';
+  $('#adv-del').style.display=(a&&(window.ADVS||[]).length>1)?'inline-block':'none';
+  $('#adv-save').disabled=false;
+  $('#adv-modal').style.display='flex';
+};
+window.fecharModalAdvisor=()=>{$('#adv-modal').style.display='none';};
+window.salvarAdvisor=async()=>{
+  const slug=$('#adv-modal').dataset.slug;
+  const nome=$('#adv-nome').value.trim(); if(!nome){alert('Informe o nome');return;}
+  const descricao=$('#adv-desc').value.trim(), canal=$('#adv-canal').value.trim();
+  $('#adv-save').disabled=true;
+  let alvo=slug;
+  const body=JSON.stringify({nome,descricao,canal});
+  const url=slug?('/api/advisor/'+slug):'/api/advisor';
+  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body}).then(r=>r.json()).catch(e=>({erro:String(e)}));
+  if(r.erro){alert(r.erro);$('#adv-save').disabled=false;return;}
+  if(!slug)alvo=r.slug;
+  const f=$('#adv-foto').files[0];
+  if(f){const fd=new FormData();fd.append('arquivo',f);await fetch('/api/advisor-foto/'+alvo,{method:'POST',body:fd});}
+  location.reload();
+};
+window.excluirAdvisor=async()=>{
+  const slug=$('#adv-modal').dataset.slug; if(!slug)return;
+  if(!confirm('Excluir este advisor? Os dados ficam guardados (recuperáveis), mas ele sai da lista.'))return;
+  const r=await fetch('/api/advisor/'+slug,{method:'DELETE'}).then(r=>r.json()).catch(e=>({erro:String(e)}));
+  if(r.erro){alert(r.erro);return;}
+  location.reload();
+};
 window.abrirTopico=async slug=>{
   const d=await fetch('/api/mente/'+slug).then(r=>r.json());
   $('#tgrid').style.display='none';$('#mdwrap').style.display='block';
@@ -228,8 +289,9 @@ async function enviar(){
   const el=$('#chatlog').lastChild;el.scrollIntoView();
   try{
     const emp=$('#chat-emp').value, area=$('#chat-area').value;
+    const advisor=($('#chatadv')&&$('#chatadv').value)||window.chatAdvisor||'';
     const d=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({pergunta:q,historico:HIST,empresa:emp,area:area})}).then(r=>r.json());
+      body:JSON.stringify({pergunta:q,historico:HIST,empresa:emp,area:area,advisor})}).then(r=>r.json());
     if(d.erro){el.textContent='Erro: '+d.erro;return;}
     el.innerHTML=md2html(d.resposta)+botaoExport(q,d.resposta,d.empresa,d.data);
     HIST.push({role:'user',content:q},{role:'assistant',content:d.resposta});HIST=HIST.slice(-8);
@@ -382,6 +444,7 @@ ctx();
 carregarSelEmp();
 $('#send').onclick=enviar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
+document.addEventListener('change',e=>{ if(e.target&&e.target.id==='chatadv'){ window.chatAdvisor=e.target.value; HIST=[]; aplicarGreet(); $('#chatlog').innerHTML=''; $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a" id="greet"></div>`); aplicarGreet(); } });
 estado();
 </script>
 </div></body></html>
