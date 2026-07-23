@@ -429,17 +429,27 @@ def api_transcricao():
         return Response('', headers=resp_headers)
     d = request.get_json(force=True)
     vid, txt = d.get('id', ''), (d.get('texto', '') or '').strip()
+    titulo_in = (d.get('titulo') or '').strip()
     if not re.match(r'^[\w-]{11}$', vid): return jsonify({'erro': 'id inválido'}), 400
     if len(txt) < 2500:
         # NÃO ignora mais (era footgun: glitch de carregamento no navegador travava o vídeo)
         return jsonify({'ok': True, 'curto': True, 'chars': len(txt)}), 200, resp_headers
-    vs = {v['id']: v for v in json.loads(ler(p('videos.json')) or '[]')}
-    tit = vs.get(vid, {}).get('titulo', vid)
+    vlist = json.loads(ler(p('videos.json')) or '[]')
+    vs = {v['id']: v for v in vlist}
+    novo = vid not in vs
+    if novo:                                 # vídeo de QUALQUER canal → entra na fila automaticamente
+        vs[vid] = {'id': vid, 'titulo': titulo_in or vid, 'views': '', 'data': '', 'fonte': 'extensão'}
+        vlist = [vs[vid]] + vlist
+        gravar(p('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+    elif titulo_in and vs[vid].get('titulo') in (None, '', vid):   # completa título vazio
+        vs[vid]['titulo'] = titulo_in
+        gravar(p('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+    tit = vs[vid].get('titulo', vid)
     gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
     ign = json.loads(ler(p('ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
     if vid in ign:
         gravar(p('ignorados.json'), json.dumps([x for x in ign if x != vid]))
-    return jsonify({'ok': True, 'chars': len(txt)}), 200, resp_headers
+    return jsonify({'ok': True, 'chars': len(txt), 'novo': novo}), 200, resp_headers
 
 @app.route('/api/limpar-shorts', methods=['POST'])
 def api_limpar_shorts():
