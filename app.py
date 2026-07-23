@@ -802,6 +802,21 @@ def api_conversas_limpar():
     gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
     return jsonify({'ok': True})
 
+@app.route('/api/backup')
+def api_backup():
+    """Zip de TODO o data/ (mente, sínteses, transcrições, jsons) — rede de segurança do volume."""
+    import io as _io, zipfile, datetime as _dt
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(DATA):
+            for f in files:
+                full = os.path.join(root, f)
+                try: z.write(full, os.path.relpath(full, DATA))
+                except Exception: pass
+    fn = 'advisor-backup-%s.zip' % _dt.datetime.now().strftime('%Y%m%d')
+    return Response(buf.getvalue(), mimetype='application/zip',
+                    headers={'Content-Disposition': 'attachment; filename="%s"' % fn})
+
 @app.route('/')
 def painel():
     return Response(ler(os.path.join(BASE, 'painel.html')), mimetype='text/html')
