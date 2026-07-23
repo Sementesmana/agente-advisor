@@ -11,11 +11,47 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get('DATA_DIR', os.path.join(BASE, 'data'))
 _SEED = os.path.join(BASE, 'data')
 # Volume persistente (Railway): se DATA_DIR aponta pra um volume vazio, semeia com o data/ do repo
-if DATA != _SEED and not os.path.exists(os.path.join(DATA, 'videos.json')):
+if DATA != _SEED and not os.path.exists(os.path.join(DATA, 'advisors.json')) \
+        and not os.path.exists(os.path.join(DATA, 'videos.json')) \
+        and not os.path.isdir(os.path.join(DATA, 'advisors')):
     import shutil
     os.makedirs(DATA, exist_ok=True)
     shutil.copytree(_SEED, DATA, dirs_exist_ok=True)
     print('[boot] volume semeado a partir do repo', flush=True)
+
+# ---------- MULTI-ADVISOR: dados do advisor ficam em data/advisors/<slug>/ ----------
+ADVISOR_PADRAO = {'slug': 'alfredo-soares', 'nome': 'Alfredo Soares',
+                  'descricao': 'Co-fundador do G4 Educação e da VTEX Brasil. Vendas, varejo e marca.',
+                  'foto': '', 'ativo': True}
+# chaves de dados que pertencem a UM advisor (o resto — ctx/, conversas.json — é compartilhado)
+_ADV_DIRS = ('mente', 'sinteses', 'transcricoes')
+_ADV_JSONS = ('videos.json', 'consolidado.json', 'ignorados.json')
+
+def _migrar_multiadvisor():
+    """Idempotente: se ainda está no layout antigo (dados na raiz), move p/ advisors/alfredo-soares/
+    e cria advisors.json. Roda no boot; se advisors.json já existe, não faz nada."""
+    import shutil
+    reg = os.path.join(DATA, 'advisors.json')
+    if os.path.exists(reg):
+        return
+    layout_antigo = os.path.isdir(os.path.join(DATA, 'mente')) or os.path.exists(os.path.join(DATA, 'videos.json'))
+    destino = os.path.join(DATA, 'advisors', ADVISOR_PADRAO['slug'])
+    os.makedirs(destino, exist_ok=True)
+    if layout_antigo:
+        for d in _ADV_DIRS:
+            src = os.path.join(DATA, d)
+            if os.path.isdir(src) and not os.path.isdir(os.path.join(destino, d)):
+                shutil.move(src, os.path.join(destino, d))
+        for jf in _ADV_JSONS:
+            src = os.path.join(DATA, jf)
+            if os.path.exists(src) and not os.path.exists(os.path.join(destino, jf)):
+                shutil.move(src, os.path.join(destino, jf))
+        print('[boot] migrado layout antigo -> advisors/%s/' % ADVISOR_PADRAO['slug'], flush=True)
+    with open(reg, 'w', encoding='utf-8') as fh:
+        json.dump([ADVISOR_PADRAO], fh, ensure_ascii=False, indent=1)
+    print('[boot] advisors.json criado', flush=True)
+
+_migrar_multiadvisor()
 GW_URL = os.environ.get('LLM_GATEWAY_URL', '').rstrip('/')
 GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
 MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')                 # chat do Advisor (qualidade)
@@ -46,21 +82,39 @@ def _cors(resp):
         resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
-def p(*a): return os.path.join(DATA, *a)
+def p(*a): return os.path.join(DATA, *a)          # raiz do volume (compartilhado: ctx/, conversas, advisors.json)
 def ler(path): return open(path, encoding='utf-8').read() if os.path.exists(path) else ''
 def gravar(path, txt):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     open(path, 'w', encoding='utf-8').write(txt)
 
+# ---------- Registro de advisors + caminho por advisor ----------
+def advisors():
+    return json.loads(ler(p('advisors.json')) or '[]')
+
+def salvar_advisors(lst):
+    gravar(p('advisors.json'), json.dumps(lst, ensure_ascii=False, indent=1))
+
+def advisor_ativo():
+    a = advisors()
+    return next((x for x in a if x.get('ativo')), a[0] if a else dict(ADVISOR_PADRAO))
+
+def adv_slug():
+    return advisor_ativo().get('slug', ADVISOR_PADRAO['slug'])
+
+def pa(*a):
+    """Caminho DENTRO do advisor ativo: data/advisors/<slug>/..."""
+    return os.path.join(DATA, 'advisors', adv_slug(), *a)
+
 def videos():
-    vs = json.loads(ler(p('videos.json')) or '[]')
-    ign = set(json.loads(ler(p('ignorados.json')) or '[]'))
+    vs = json.loads(ler(pa('videos.json')) or '[]')
+    ign = set(json.loads(ler(pa('ignorados.json')) or '[]'))
     vs = [v for v in vs if v['id'] not in ign]
-    cons = set(json.loads(ler(p('consolidado.json')) or '[]'))
+    cons = set(json.loads(ler(pa('consolidado.json')) or '[]'))
     for v in vs:
         if v['id'] in cons: v['status'] = 'consolidado'
-        elif os.path.exists(p('sinteses', v['id'] + '.md')): v['status'] = 'sintetizado'
-        elif os.path.exists(p('transcricoes', v['id'] + '.txt')): v['status'] = 'transcrito'
+        elif os.path.exists(pa('sinteses', v['id'] + '.md')): v['status'] = 'sintetizado'
+        elif os.path.exists(pa('transcricoes', v['id'] + '.txt')): v['status'] = 'transcrito'
         else: v['status'] = 'pendente'
     return vs
 
@@ -86,9 +140,9 @@ def llm(system, user, max_tokens=8000, model=None):
 import html as _html
 
 def ignorar(vid, motivo):
-    ign = json.loads(ler(p('ignorados.json')) or '[]')
+    ign = json.loads(ler(pa('ignorados.json')) or '[]')
     if vid not in ign:
-        ign.append(vid); gravar(p('ignorados.json'), json.dumps(ign))
+        ign.append(vid); gravar(pa('ignorados.json'), json.dumps(ign))
     log('Ignorado %s (%s)' % (vid, motivo))
 
 def dur_seg(vid):
@@ -111,7 +165,7 @@ def coletar():
                      timeout=30, headers={'User-Agent': 'Mozilla/5.0'}, proxies=PROXIES)
     r.raise_for_status()
     entradas = re.findall(r'<entry>([\s\S]*?)</entry>', r.text)
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     conhecidos = {v['id'] for v in vs}
     novos, feed_ids = [], []
     for e in entradas:  # feed vem do mais recente pro mais antigo
@@ -131,18 +185,18 @@ def coletar():
     vs = novos + vs
     pos = {vid: i for i, vid in enumerate(feed_ids)}
     vs.sort(key=lambda v: pos.get(v['id'], 10**6))
-    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     log('Coletor: %d vídeo(s) novo(s) no canal' % len(novos))
     return len(novos)
 
 def limpar_shorts():
     """REGRA LOCAL pura — remove da fila quem já tem duração < 4min. Não fala com o YouTube, é instantâneo."""
     PROGRESSO['log'] = []
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     rem = [v['id'] for v in vs if 0 < (v.get('dur') or 0) < 240]
     for vid in rem: ignorar(vid, 'short (regra local)')
     vs2 = [v for v in vs if v['id'] not in set(rem)]
-    gravar(p('videos.json'), json.dumps(vs2, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs2, ensure_ascii=False, indent=1))
     sem = sum(1 for v in vs2 if not v.get('dur'))
     log('🧹 %d short(s) removido(s) pela duração.' % len(rem) +
         ((' %d vídeo(s) ainda sem duração — clique em Buscar (traz a duração dos novos).' % sem) if sem else ''))
@@ -207,9 +261,9 @@ views: {views}
 tags: (3-6 tags, OBRIGATORIAMENTE escolhidas desta lista: %s)""" % ', '.join(TAXONOMIA)
 
 def sintetizar(v):
-    txt = ler(p('transcricoes', v['id'] + '.txt'))
+    txt = ler(pa('transcricoes', v['id'] + '.txt'))
     md = llm(SINTESE_SYS, 'Vídeo: %s (id %s, %s views)\n\nTRANSCRIÇÃO:\n%s' % (v['titulo'], v['id'], v.get('views',''), txt[:180000]))
-    gravar(p('sinteses', v['id'] + '.md'), md.strip())
+    gravar(pa('sinteses', v['id'] + '.md'), md.strip())
     m = re.search(r'tags:\s*(.+)', md)
     return [t.strip() for t in m.group(1).split(',') if t.strip() in TAXONOMIA] if m else []
 
@@ -227,7 +281,7 @@ tema-slug ||| Título curto ||| corpo do princípio"""
 
 def rotear(v):
     """1 chamada de LLM: extrai princípios da síntese, cada um com seu tema-dono único."""
-    sint = ler(p('sinteses', v['id'] + '.md'))
+    sint = ler(pa('sinteses', v['id'] + '.md'))
     out = llm(ROTA_SYS % ', '.join(TAXONOMIA), 'SÍNTESE:\n' + sint[:20000], 4500)
     princ = []
     for ln in out.splitlines():
@@ -243,7 +297,7 @@ def arquivar(v, princ):
     for tema, t, c in princ:
         porTema.setdefault(tema, []).append((t, c))
     for tema, itens in porTema.items():
-        atual = ler(p('mente', tema + '.md'))
+        atual = ler(pa('mente', tema + '.md'))
         prox = len(re.findall(r'\*\*\d+\.', atual)) + 1
         m = re.search(r'\n##\s*Fontes\b[\s\S]*$', atual)
         if m:            corpo, fontes = atual[:m.start()].rstrip(), atual[m.start():].strip()
@@ -256,7 +310,7 @@ def arquivar(v, princ):
         corpo += '\n\n' + '\n\n'.join(blocos)
         if vid not in fontes:
             fontes = fontes.rstrip() + '\n- %s · %s' % (tit, vid)
-        gravar(p('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
+        gravar(pa('mente', tema + '.md'), (corpo + '\n\n' + fontes).strip() + '\n')
 
 # ---------- PIPELINE ----------
 def processar(ids=None):
@@ -279,7 +333,7 @@ def processar(ids=None):
                     except RuntimeError as e:
                         if str(e) == 'CURTO': ignorar(v['id'], 'curto/short'); continue
                         raise
-                    gravar(p('transcricoes', v['id'] + '.txt'), v['titulo'] + '\nhttps://www.youtube.com/watch?v=' + v['id'] + '\n' + txt)
+                    gravar(pa('transcricoes', v['id'] + '.txt'), v['titulo'] + '\nhttps://www.youtube.com/watch?v=' + v['id'] + '\n' + txt)
                     v['status'] = 'transcrito'
                 if v['status'] == 'transcrito':
                     log('Sintetizando: ' + v['titulo'][:60])
@@ -301,8 +355,8 @@ def processar(ids=None):
                 consolidados.append(v['id'])
             except Exception as e:
                 log('ERRO consolidação %s: %s' % (v['id'], e)); continue
-        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(consolidados)
-        gravar(p('consolidado.json'), json.dumps(sorted(cons)))
+        cons = set(json.loads(ler(pa('consolidado.json')) or '[]')) | set(consolidados)
+        gravar(pa('consolidado.json'), json.dumps(sorted(cons)))
         log('Pipeline concluído.')
     except Exception:
         log('ERRO geral: ' + traceback.format_exc()[-300:])
@@ -388,8 +442,8 @@ def contexto_para_chat(empresa_slug=None, area_slug=None):
 
 # ---------- 4 PERSONA / CHAT ----------
 def chat(pergunta, historico, empresa_slug=None, area_slug=None):
-    persona = ler(p('mente', 'persona.md'))
-    mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(p('mente', '*.md'))) if not f.endswith('persona.md'))
+    persona = ler(pa('mente', 'persona.md'))
+    mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(pa('mente', '*.md'))) if not f.endswith('persona.md'))
     ctx = contexto_para_chat(empresa_slug, area_slug)
     sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
           (('\n\n=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n' + ctx) if ctx else '') + \
@@ -405,19 +459,20 @@ def chat(pergunta, historico, empresa_slug=None, area_slug=None):
 @app.route('/api/estado')
 def api_estado():
     topics = []
-    for f in sorted(glob.glob(p('mente', '*.md'))):
+    for f in sorted(glob.glob(pa('mente', '*.md'))):
         slug = os.path.basename(f)[:-3]
         if slug == 'persona': continue
         raw = ler(f)
         topics.append({'slug': slug, 'title': (re.search(r'^# (.+)$', raw, re.M) or [None,'?'])[1] if re.search(r'^# (.+)$', raw, re.M) else slug,
                        'n': len(re.findall(r'\*\*\d+\.', raw))})
     return jsonify({'videos': videos(), 'topics': topics, 'progresso': PROGRESSO,
-                    'gateway': bool(GW_URL and GW_KEY)})
+                    'gateway': bool(GW_URL and GW_KEY),
+                    'advisors': advisors(), 'advisor': advisor_ativo()})
 
 @app.route('/api/mente/<slug>')
 def api_mente(slug):
     if not re.match(r'^[\w-]+$', slug): return ('', 404)
-    return jsonify({'md': ler(p('mente', slug + '.md'))})
+    return jsonify({'md': ler(pa('mente', slug + '.md'))})
 
 @app.route('/api/transcricao', methods=['POST', 'OPTIONS'])
 def api_transcricao():
@@ -434,21 +489,21 @@ def api_transcricao():
     if len(txt) < 2500:
         # NÃO ignora mais (era footgun: glitch de carregamento no navegador travava o vídeo)
         return jsonify({'ok': True, 'curto': True, 'chars': len(txt)}), 200, resp_headers
-    vlist = json.loads(ler(p('videos.json')) or '[]')
+    vlist = json.loads(ler(pa('videos.json')) or '[]')
     vs = {v['id']: v for v in vlist}
     novo = vid not in vs
     if novo:                                 # vídeo de QUALQUER canal → entra na fila automaticamente
         vs[vid] = {'id': vid, 'titulo': titulo_in or vid, 'views': '', 'data': '', 'fonte': 'extensão'}
         vlist = [vs[vid]] + vlist
-        gravar(p('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+        gravar(pa('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
     elif titulo_in and vs[vid].get('titulo') in (None, '', vid):   # completa título vazio
         vs[vid]['titulo'] = titulo_in
-        gravar(p('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+        gravar(pa('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
     tit = vs[vid].get('titulo', vid)
-    gravar(p('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
-    ign = json.loads(ler(p('ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
+    gravar(pa('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
+    ign = json.loads(ler(pa('ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
     if vid in ign:
-        gravar(p('ignorados.json'), json.dumps([x for x in ign if x != vid]))
+        gravar(pa('ignorados.json'), json.dumps([x for x in ign if x != vid]))
     return jsonify({'ok': True, 'chars': len(txt), 'novo': novo}), 200, resp_headers
 
 @app.route('/api/limpar-shorts', methods=['POST'])
@@ -460,19 +515,19 @@ def api_limpar_shorts():
 def api_set_duracoes():
     """Recebe {id: segundos} extraídos pelo navegador (IP residencial) e grava a duração na fila."""
     m = (request.get_json(force=True) or {}).get('duracoes', {})
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     n = 0
     for v in vs:
         if v['id'] in m:
             v['dur'] = int(m[v['id']]); n += 1
-    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True, 'atualizados': n})
 
 @app.route('/api/set-meta', methods=['POST'])
 def api_set_meta():
     """Corrige título/duração/fonte de vídeos (ex.: os que ficaram sem nome ao adicionar sob bloqueio)."""
     m = (request.get_json(force=True) or {}).get('metas', {})  # {id: {titulo, dur, fonte}}
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     n = 0
     for v in vs:
         if v['id'] in m:
@@ -481,32 +536,32 @@ def api_set_meta():
             if mm.get('dur'): v['dur'] = int(mm['dur'])
             if mm.get('fonte'): v['fonte'] = mm['fonte']
             n += 1
-    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True, 'atualizados': n})
 
 @app.route('/api/sem-titulo')
 def api_sem_titulo():
     """Lista vídeos cujo título ficou igual ao id (pro navegador re-buscar os nomes)."""
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     return jsonify([v['id'] for v in vs if v.get('titulo', '') == v['id']])
 
 # ---------- Síntese feita no Cowork (subagentes) — app só grava, sem LLM ----------
 @app.route('/api/transcricao/<vid>')
 def api_get_transcricao(vid):
     if not re.match(r'^[\w-]{11}$', vid): return ('', 404)
-    txt = ler(p('transcricoes', vid + '.txt'))
+    txt = ler(pa('transcricoes', vid + '.txt'))
     if not txt: return jsonify({}), 404
-    tit = next((v['titulo'] for v in json.loads(ler(p('videos.json')) or '[]') if v['id'] == vid), vid)
+    tit = next((v['titulo'] for v in json.loads(ler(pa('videos.json')) or '[]') if v['id'] == vid), vid)
     return jsonify({'id': vid, 'titulo': tit, 'texto': txt})
 
 @app.route('/api/pendentes-sintese')
 def api_pendentes_sintese():
     """IDs que têm transcrição mas ainda não têm síntese."""
     out = []
-    for f in sorted(glob.glob(p('transcricoes', '*.txt'))):
+    for f in sorted(glob.glob(pa('transcricoes', '*.txt'))):
         vid = os.path.basename(f)[:-4]
-        if not os.path.exists(p('sinteses', vid + '.md')):
-            tit = next((v['titulo'] for v in json.loads(ler(p('videos.json')) or '[]') if v['id'] == vid), vid)
+        if not os.path.exists(pa('sinteses', vid + '.md')):
+            tit = next((v['titulo'] for v in json.loads(ler(pa('videos.json')) or '[]') if v['id'] == vid), vid)
             out.append({'id': vid, 'titulo': tit})
     return jsonify(out)
 
@@ -514,7 +569,7 @@ def api_pendentes_sintese():
 def api_set_sintese(vid):
     """Recebe a síntese .md já pronta (feita no Cowork) e grava — sem chamar LLM."""
     if not re.match(r'^[\w-]{11}$', vid): return ('', 404)
-    gravar(p('sinteses', vid + '.md'), (request.get_json(force=True) or {}).get('md', '').strip())
+    gravar(pa('sinteses', vid + '.md'), (request.get_json(force=True) or {}).get('md', '').strip())
     return jsonify({'ok': True})
 
 @app.route('/api/importar-lote', methods=['POST'])
@@ -523,13 +578,13 @@ def api_importar_lote():
     d = request.get_json(force=True) or {}
     n_s = n_m = 0
     for vid, md in (d.get('sinteses', {}) or {}).items():
-        if re.match(r'^[\w-]{11}$', vid): gravar(p('sinteses', vid + '.md'), (md or '').strip()); n_s += 1
+        if re.match(r'^[\w-]{11}$', vid): gravar(pa('sinteses', vid + '.md'), (md or '').strip()); n_s += 1
     for tema, md in (d.get('mente', {}) or {}).items():
-        if re.match(r'^[\w-]+$', tema): gravar(p('mente', tema + '.md'), (md or '').strip()); n_m += 1
+        if re.match(r'^[\w-]+$', tema): gravar(pa('mente', tema + '.md'), (md or '').strip()); n_m += 1
     ids = d.get('consolidado', [])
     if ids:
-        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(ids)
-        gravar(p('consolidado.json'), json.dumps(sorted(cons)))
+        cons = set(json.loads(ler(pa('consolidado.json')) or '[]')) | set(ids)
+        gravar(pa('consolidado.json'), json.dumps(sorted(cons)))
     return jsonify({'ok': True, 'sinteses': n_s, 'temas': n_m})
 
 @app.route('/api/set-mente/<tema>', methods=['POST'])
@@ -537,20 +592,20 @@ def api_set_mente(tema):
     """Recebe o arquivo .md de um tópico da mente (consolidado no Cowork) e grava; marca ids como consolidados."""
     if not re.match(r'^[\w-]+$', tema): return ('', 404)
     d = request.get_json(force=True) or {}
-    gravar(p('mente', tema + '.md'), (d.get('md', '') or '').strip())
+    gravar(pa('mente', tema + '.md'), (d.get('md', '') or '').strip())
     ids = d.get('ids', [])
     if ids:
-        cons = set(json.loads(ler(p('consolidado.json')) or '[]')) | set(ids)
-        gravar(p('consolidado.json'), json.dumps(sorted(cons)))
+        cons = set(json.loads(ler(pa('consolidado.json')) or '[]')) | set(ids)
+        gravar(pa('consolidado.json'), json.dumps(sorted(cons)))
     return jsonify({'ok': True})
 
 @app.route('/api/ignorar', methods=['POST'])
 def api_ignorar():
     """Remove uma lista de IDs da fila e manda pros ignorados (usado p/ limpar shorts identificados fora)."""
     ids = set((request.get_json(force=True) or {}).get('ids', []))
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     manter = [v for v in vs if v['id'] not in ids]
-    gravar(p('videos.json'), json.dumps(manter, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(manter, ensure_ascii=False, indent=1))
     for vid in ids: ignorar(vid, 'short (lote)')
     return jsonify({'ok': True, 'removidos': len(vs) - len(manter)})
 
@@ -592,7 +647,7 @@ def api_add_video():
         vid = extrair_video_id(tok)
         if vid and vid not in vistos: ids.append(vid); vistos.add(vid)
     if not ids: return jsonify({'erro': 'nenhuma URL válida'}), 400
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     conhecidos = {v['id'] for v in vs}
     add, novos = 0, []
     for vid in ids:
@@ -603,7 +658,7 @@ def api_add_video():
         if m['dur'] > 0: item['dur'] = m['dur']
         novos.append(item); conhecidos.add(vid); add += 1
     vs = novos + vs
-    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True, 'adicionados': add, 'total_validas': len(ids)})
 
 @app.route('/api/coletar', methods=['POST'])
@@ -624,9 +679,9 @@ def api_processar():
 def api_ordem():
     ids = (request.get_json(force=True) or {}).get('ids', [])
     pos = {vid: i for i, vid in enumerate(ids)}
-    vs = json.loads(ler(p('videos.json')) or '[]')
+    vs = json.loads(ler(pa('videos.json')) or '[]')
     vs.sort(key=lambda v: pos.get(v['id'], 10**6))  # sort estável: não listados mantêm ordem
-    gravar(p('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
+    gravar(pa('videos.json'), json.dumps(vs, ensure_ascii=False, indent=1))
     return jsonify({'ok': True})
 
 @app.route('/api/contexto')
@@ -801,6 +856,103 @@ def api_conversas_limpar():
         conv = []
     gravar(p('conversas.json'), json.dumps(conv, ensure_ascii=False))
     return jsonify({'ok': True})
+
+# ---------- ADVISORS (múltiplas personalidades) ----------
+PERSONA_SEED = """# Persona — %(nome)s
+
+Você é **%(nome)s**. %(descricao)s
+
+Fale em primeira pessoa, direto e prático. Dê o plano de ação e a conta feita.
+Use SEMPRE a base de conhecimento (a mente) abaixo e cite os vídeos-fonte dos princípios que usar.
+Não invente números nem cases: use só o que está na mente e no contexto da empresa.
+"""
+
+def criar_advisor_dados(slug, nome, descricao):
+    """Cria a pasta do advisor com persona inicial e jsons vazios (não sobrescreve se já existir)."""
+    base = os.path.join(DATA, 'advisors', slug)
+    if not os.path.exists(os.path.join(base, 'mente', 'persona.md')):
+        gravar(os.path.join(base, 'mente', 'persona.md'),
+               PERSONA_SEED % {'nome': nome, 'descricao': descricao or ''})
+    for jf in _ADV_JSONS:
+        fp = os.path.join(base, jf)
+        if not os.path.exists(fp):
+            gravar(fp, '[]')
+
+@app.route('/api/advisors')
+def api_advisors():
+    return jsonify({'advisors': advisors(), 'ativo': adv_slug()})
+
+@app.route('/api/advisor-ativo', methods=['POST'])
+def api_advisor_ativo():
+    slug = (request.get_json(force=True) or {}).get('slug', '')
+    lst = advisors()
+    if not any(x['slug'] == slug for x in lst):
+        return jsonify({'erro': 'advisor não encontrado'}), 404
+    for x in lst: x['ativo'] = (x['slug'] == slug)
+    salvar_advisors(lst)
+    return jsonify({'ok': True, 'ativo': slug})
+
+@app.route('/api/advisor', methods=['POST'])
+def api_advisor_novo():
+    d = request.get_json(force=True) or {}
+    nome = (d.get('nome', '') or '').strip()
+    if not nome: return jsonify({'erro': 'informe o nome'}), 400
+    slug = _slug(nome)
+    lst = advisors()
+    if any(x['slug'] == slug for x in lst):
+        return jsonify({'erro': 'já existe um advisor com esse nome'}), 400
+    desc = (d.get('descricao', '') or '').strip()
+    criar_advisor_dados(slug, nome, desc)
+    for x in lst: x['ativo'] = False
+    lst.append({'slug': slug, 'nome': nome, 'descricao': desc, 'foto': '', 'ativo': True})
+    salvar_advisors(lst)
+    return jsonify({'ok': True, 'slug': slug})
+
+@app.route('/api/advisor/<slug>', methods=['POST'])
+def api_advisor_editar(slug):
+    """Edita nome/descrição de um advisor existente (não mexe nos dados/mente)."""
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    d = request.get_json(force=True) or {}
+    lst = advisors()
+    x = next((a for a in lst if a['slug'] == slug), None)
+    if not x: return jsonify({'erro': 'não encontrado'}), 404
+    if d.get('nome'): x['nome'] = d['nome'].strip()
+    if 'descricao' in d: x['descricao'] = (d.get('descricao') or '').strip()
+    salvar_advisors(lst)
+    return jsonify({'ok': True})
+
+@app.route('/api/advisor-foto/<slug>', methods=['POST'])
+def api_advisor_foto_up(slug):
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    lst = advisors()
+    x = next((a for a in lst if a['slug'] == slug), None)
+    if not x: return jsonify({'erro': 'não encontrado'}), 404
+    f = request.files.get('arquivo')
+    if not f: return jsonify({'erro': 'sem arquivo'}), 400
+    dados = f.read()
+    if len(dados) > 5 * 1024 * 1024: return jsonify({'erro': 'máx 5MB'}), 400
+    ext = (os.path.splitext(f.filename)[1].lower() or '.jpg').lstrip('.')
+    if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'): return jsonify({'erro': 'imagem inválida'}), 400
+    fn = 'foto.' + ext
+    caminho = os.path.join(DATA, 'advisors', slug, fn)
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, 'wb') as fh: fh.write(dados)
+    x['foto'] = fn
+    salvar_advisors(lst)
+    return jsonify({'ok': True, 'foto': fn})
+
+@app.route('/api/advisor-foto/<slug>')
+def api_advisor_foto(slug):
+    if not re.match(r'^[\w-]+$', slug): return ('', 404)
+    x = next((a for a in advisors() if a['slug'] == slug), None)
+    fn = (x or {}).get('foto', '')
+    if not fn: return ('', 404)
+    caminho = os.path.join(DATA, 'advisors', slug, fn)
+    if not os.path.exists(caminho): return ('', 404)
+    mimes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp', 'gif': 'image/gif'}
+    mime = mimes.get(fn.rsplit('.', 1)[-1].lower(), 'application/octet-stream')
+    with open(caminho, 'rb') as fh: dados = fh.read()
+    return Response(dados, mimetype=mime, headers={'Cache-Control': 'no-cache'})
 
 @app.route('/api/backup')
 def api_backup():
