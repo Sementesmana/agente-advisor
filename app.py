@@ -130,6 +130,27 @@ def resolver_canal(canal):
             pass
     return canal or YT_CHANNEL_ID
 
+def advisor_por_canal(cid):
+    """Casa o channel_id (UC...) do vídeo com o advisor cujo 'canal' tem o mesmo UC. Sem rede."""
+    m = re.search(r'(UC[\w-]{22})', cid or '')
+    if not m: return None
+    cid = m.group(1)
+    for a in advisors():
+        cm = re.search(r'(UC[\w-]{22})', a.get('canal') or '')
+        if cm and cm.group(1) == cid:
+            return a['slug']
+    return None
+
+def rotear_advisor(advisor_in='', canal_in=''):
+    """Pra qual advisor vai a transcrição: escolha explícita > match por canal > advisor ativo."""
+    a = (advisor_in or '').strip()
+    if a and any(x['slug'] == a for x in advisors()):
+        return a, 'escolhido'
+    alvo = advisor_por_canal(canal_in)
+    if alvo:
+        return alvo, 'canal'
+    return adv_slug(), 'ativo'
+
 def videos():
     vs = json.loads(ler(pa('videos.json')) or '[]')
     ign = set(json.loads(ler(pa('ignorados.json')) or '[]'))
@@ -515,22 +536,26 @@ def api_transcricao():
     if len(txt) < 2500:
         # NÃO ignora mais (era footgun: glitch de carregamento no navegador travava o vídeo)
         return jsonify({'ok': True, 'curto': True, 'chars': len(txt)}), 200, resp_headers
-    vlist = json.loads(ler(pa('videos.json')) or '[]')
+    # roteia: advisor escolhido na extensão > canal do vídeo bate com um advisor > advisor ativo
+    alvo, motivo = rotear_advisor(d.get('advisor', ''), d.get('canal', ''))
+    nome_alvo = next((a['nome'] for a in advisors() if a['slug'] == alvo), alvo)
+    vlist = json.loads(ler(pd(alvo, 'videos.json')) or '[]')
     vs = {v['id']: v for v in vlist}
     novo = vid not in vs
     if novo:                                 # vídeo de QUALQUER canal → entra na fila automaticamente
         vs[vid] = {'id': vid, 'titulo': titulo_in or vid, 'views': '', 'data': '', 'fonte': 'extensão'}
         vlist = [vs[vid]] + vlist
-        gravar(pa('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+        gravar(pd(alvo, 'videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
     elif titulo_in and vs[vid].get('titulo') in (None, '', vid):   # completa título vazio
         vs[vid]['titulo'] = titulo_in
-        gravar(pa('videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
+        gravar(pd(alvo, 'videos.json'), json.dumps(vlist, ensure_ascii=False, indent=1))
     tit = vs[vid].get('titulo', vid)
-    gravar(pa('transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
-    ign = json.loads(ler(pa('ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
+    gravar(pd(alvo, 'transcricoes', vid + '.txt'), tit + '\nhttps://www.youtube.com/watch?v=' + vid + '\n' + txt)
+    ign = json.loads(ler(pd(alvo, 'ignorados.json')) or '[]')   # chegou transcrição válida → reativa se estava ignorado por engano
     if vid in ign:
-        gravar(pa('ignorados.json'), json.dumps([x for x in ign if x != vid]))
-    return jsonify({'ok': True, 'chars': len(txt), 'novo': novo}), 200, resp_headers
+        gravar(pd(alvo, 'ignorados.json'), json.dumps([x for x in ign if x != vid]))
+    return jsonify({'ok': True, 'chars': len(txt), 'novo': novo,
+                    'advisor': alvo, 'advisor_nome': nome_alvo, 'roteamento': motivo}), 200, resp_headers
 
 @app.route('/api/limpar-shorts', methods=['POST'])
 def api_limpar_shorts():
