@@ -54,7 +54,7 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <header id="hdr"><div class="logo">AS</div><h1>ADVISOR <span>ALFREDO SOARES</span></h1></header>
 <div class="sub">agente-advisor · Sementes Maná · pipeline + mente + conselheiro</div>
 <div class="warn" id="gw-warn">⚠ Gateway LLM não configurado (LLM_GATEWAY_URL / LLM_GATEWAY_KEY). O pipeline de síntese e o chat ficam indisponíveis até configurar as variáveis no Railway.</div>
-<nav><button class="on" data-t="t-pipe">Pipeline</button><button data-t="t-mente">A Mente</button><button data-t="t-chat">Advisor</button><button data-t="t-hist">Histórico</button><button data-t="t-ctx">Contexto</button></nav>
+<nav><button class="on" data-t="t-pipe">Pipeline</button><button data-t="t-mente">A Mente</button><button data-t="t-chat">Advisor</button><button data-t="t-hist">Histórico</button><button data-t="t-ctx">Contexto</button><button data-t="t-pb">Playbook</button></nav>
 
 <div id="adv-modal" style="display:none;position:fixed;inset:0;background:#000b;z-index:50;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(460px,94vw)">
@@ -147,13 +147,50 @@ nav button.on{background:var(--gold);color:#141414;font-weight:700;border-color:
 <div id="areas"></div>
 </div>
 
+<div class="tab" id="t-pb">
+<p class="note">Gera o <b>playbook do segmento</b> a partir da doutrina do advisor + o contexto da empresa.
+Toda recomendação sai citando o módulo e o vídeo de origem.</p>
+
+<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;color:var(--dim)">Doutrina carregada:</span>
+    <b id="pb-dout" style="color:var(--gold2)">—</b>
+    <button class="back" id="pb-dout-edit" style="margin-bottom:0;margin-left:auto">substituir</button>
+  </div>
+  <div id="pb-dout-box" style="display:none;margin-top:12px">
+    <textarea id="pb-dout-txt" placeholder="Cole aqui o 02-catalogo.md inteiro" style="width:100%;min-height:130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--tx);font-size:12.5px;font-family:ui-monospace,monospace"></textarea>
+    <div style="margin-top:8px"><button class="btn" id="pb-dout-save">Salvar doutrina</button></div>
+  </div>
+</div>
+
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0">
+  <span style="font-size:13px;color:var(--dim)">Empresa:</span>
+  <select id="pb-emp" style="background:var(--panel);border:1px solid var(--gold);border-radius:9px;padding:9px 14px;color:var(--gold2);font-size:14px;font-weight:700"></select>
+  <span style="font-size:13px;color:var(--dim)">Área:</span>
+  <select id="pb-area" style="background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 14px;color:var(--tx);font-size:13.5px"></select>
+</div>
+
+<label style="font-size:12px;color:var(--dim)">Segmento (obrigatório)</label>
+<input id="pb-seg" placeholder="Ex.: prestação de serviço para empresas do ramo alimentício" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--tx);font-size:14px;margin:5px 0 14px">
+
+<label style="font-size:12px;color:var(--dim)">O que ele quer resolver (opcional)</label>
+<textarea id="pb-perg" rows="3" placeholder="Ex.: quero dobrar em 12 meses sem aumentar time comercial" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--tx);font-size:13.5px;font-family:inherit;margin:5px 0 14px"></textarea>
+
+<button class="btn" id="pb-gerar">Gerar playbook</button>
+<span class="note" id="pb-status" style="margin-left:10px"></span>
+
+<h3 style="color:var(--gold2);font-size:15px;margin:28px 0 10px">Playbooks gerados</h3>
+<div id="pb-lista"></div>
+</div>
+
+
 <script>
 const $=s=>document.querySelector(s); let HIST=[];
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');document.getElementById(b.dataset.t).classList.add('on');
-  if(b.dataset.t==='t-hist')hist();});
+  if(b.dataset.t==='t-hist')hist(); if(b.dataset.t==='t-pb')pbInit();});
 const yt=id=>`https://www.youtube.com/watch?v=${id}`;
 function md2html(md){return md
   .replace(/&/g,'&amp;').replace(/</g,'&lt;')
@@ -490,6 +527,55 @@ document.addEventListener('change',e=>{
   if(e.target&&e.target.id==='chatadv'){ window.chatAdvisor=e.target.value; HIST=[]; aplicarGreet(); $('#chatlog').innerHTML=''; $('#chatlog').insertAdjacentHTML('beforeend',`<div class="msg a" id="greet"></div>`); aplicarGreet(); }
   if(e.target&&e.target.id==='mesa-toggle'){ setMesaMode(e.target.checked); }
 });
+
+// ---------- PLAYBOOK ----------
+async function pbInit(){
+  const d=await fetch('/api/doutrina').then(r=>r.json());
+  $('#pb-dout').textContent = d.chars ? d.chars.toLocaleString('pt-BR')+' caracteres' : 'nenhuma (vai usar a mente)';
+  const es=await fetch('/api/empresas-areas').then(r=>r.json());
+  window._PBEA=es;
+  const ativa=(es.find(e=>e.ativa)||es[0]||{}).slug;
+  $('#pb-emp').innerHTML='<option value="">— sem contexto —</option>'+es.map(e=>`<option value="${e.slug}" ${e.slug===ativa?'selected':''}>${e.nome}</option>`).join('');
+  pbAreas(); pbLista();
+}
+function pbAreas(){
+  const emp=(window._PBEA||[]).find(e=>e.slug===$('#pb-emp').value);
+  const as=emp?emp.areas:[];
+  $('#pb-area').innerHTML='<option value="">empresa inteira</option>'+as.map(a=>`<option value="${a.slug}">${a.nome}</option>`).join('');
+}
+async function pbLista(){
+  const l=await fetch('/api/playbooks').then(r=>r.json());
+  $('#pb-lista').innerHTML = l.length ? l.map(p=>`
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:13px 16px;margin-bottom:9px;display:flex;gap:12px;align-items:center">
+      <div style="flex:1"><a href="/api/playbook/${p.arquivo}" target="_blank" style="color:var(--gold2);font-weight:700;font-size:14px;text-decoration:none">${p.titulo}</a>
+      <div class="note" style="margin-top:3px">${p.quando.replace(/^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)$/,'$3/$2/$1 $4:$5')} · ${(p.chars/1024).toFixed(0)} KB</div></div>
+      <button class="back" style="margin-bottom:0" onclick="pbDel('${p.arquivo}')">excluir</button>
+    </div>`).join('') : '<p class="note">Nenhum playbook ainda.</p>';
+}
+async function pbDel(a){ if(!confirm('Excluir este playbook?'))return;
+  await fetch('/api/playbook/'+a,{method:'DELETE'}); pbLista(); }
+$('#pb-emp').onchange=pbAreas;
+$('#pb-dout-edit').onclick=()=>{const b=$('#pb-dout-box');b.style.display=b.style.display==='none'?'block':'none';};
+$('#pb-dout-save').onclick=async()=>{
+  const t=$('#pb-dout-txt').value; if(!t.trim())return alert('Cole a doutrina.');
+  const r=await fetch('/api/doutrina',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({texto:t})}).then(r=>r.json());
+  $('#pb-dout').textContent=r.chars.toLocaleString('pt-BR')+' caracteres';
+  $('#pb-dout-box').style.display='none'; $('#pb-dout-txt').value='';
+};
+$('#pb-gerar').onclick=async()=>{
+  const seg=$('#pb-seg').value.trim(); if(!seg)return alert('Informe o segmento.');
+  const b=$('#pb-gerar'); b.disabled=true; const t0=Date.now();
+  const tick=setInterval(()=>{$('#pb-status').textContent='gerando… '+Math.round((Date.now()-t0)/1000)+'s';},1000);
+  try{
+    const r=await fetch('/api/playbook',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({segmento:seg,empresa:$('#pb-emp').value||null,area:$('#pb-area').value||null,perguntas:$('#pb-perg').value})}).then(r=>r.json());
+    clearInterval(tick); b.disabled=false;
+    if(r.erro){$('#pb-status').textContent='erro: '+r.erro;return;}
+    $('#pb-status').textContent='pronto ('+Math.round((Date.now()-t0)/1000)+'s)';
+    pbLista(); window.open(r.url,'_blank');
+  }catch(e){clearInterval(tick);b.disabled=false;$('#pb-status').textContent='erro: '+e.message;}
+};
+
 estado();
 </script>
 </div></body></html>

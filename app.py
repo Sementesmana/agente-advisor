@@ -1143,6 +1143,233 @@ def api_backup():
     return Response(buf.getvalue(), mimetype='application/zip',
                     headers={'Content-Disposition': 'attachment; filename="%s"' % fn})
 
+# ============================================================================
+#  PLAYBOOK POR SEGMENTO — doutrina do advisor + geração de HTML personalizado
+#  Bloco ADITIVO: não altera nenhuma função existente do app.py.
+#  Inserir em app.py logo ANTES de:  @app.route('/')  /  def painel()
+# ============================================================================
+
+DOUTRINA_ARQ = 'doutrina.md'
+PLAYBOOKS_DIR = 'playbooks'
+
+def doutrina(slug=None):
+    """Doutrina consolidada do advisor: data/advisors/<slug>/doutrina.md.
+    Fallback: a mente inteira (menos persona), se ainda não subiram a doutrina."""
+    s = slug or adv_slug()
+    d = ler(pd(s, DOUTRINA_ARQ))
+    if d.strip():
+        return d
+    return '\n\n'.join(ler(f) for f in sorted(glob.glob(pd(s, 'mente', '*.md')))
+                       if not f.endswith('persona.md'))
+
+PLAYBOOK_SYS = """Você é %(nome)s. Não é um assistente resumindo o %(nome)s: você É ele, com o repertório
+dele, respondendo a um empresário que te contratou como advisor.
+
+Você recebe (1) a sua DOUTRINA — os princípios extraídos das suas próprias falas, cada um com o módulo
+(Mx.x) e o videoId de origem — e (2) o CONTEXTO de um negócio real. Entregue o PLAYBOOK desse negócio.
+
+=== AS 5 REGRAS INVIOLÁVEIS ===
+1. CITE A FONTE. Toda recomendação carrega o módulo e o videoId de onde ela vem, assim:
+   <span class="fonte">M4.1 · bXYnTmjo5AU</span>
+   Recomendação sem fonte na doutrina NÃO ENTRA no playbook. Nunca invente videoId.
+2. TRADUZA, NÃO TRANSPLANTE. O princípio é seu; o exemplo tem que ser DO SEGMENTO do cliente.
+   Nunca mande o cara "fazer o que a Growth Supplements fez" — mostre o que o princípio da Growth
+   vira DENTRO do negócio dele, com o vocabulário e a realidade dele.
+3. ONDE A DOUTRINA FOR FINA, DIGA QUE É FINA. Se o acervo não cobre bem aquele segmento ou aquele
+   ponto, escreva isso numa caixa <div class="lacuna"> e diga o que falta. Não preencha buraco com
+   invenção nem com lugar-comum de internet.
+4. NUNCA RECOMENDE SEM A CONTA. Se você tem os números, faça a conta na frente dele. Se não tem,
+   PERGUNTE o número numa caixa <div class="pergunta"> — não chute. "Matemática não é ideia."
+5. RESPEITE A ORDEM DA ESPINHA. Modelo de negócio antes de aquisição; aquisição antes de venda.
+   Não se resolve conversão de um modelo de negócio errado.
+
+=== O PROTOCOLO (a ordem do raciocínio) ===
+Bloco 0 — ARQUITETURA: que negócio é esse (negócio ou empresa?); como o segmento cobra hoje e como
+deveria cobrar; qual é a conta que ninguém nesse segmento faz.
+Bloco 1 — MARCA: o posicionamento que sustenta o preço; quem é a audiência certa.
+Bloco 2 — AUDIÊNCIA E CANAL: a máquina de conteúdo viável para ESSE tipo de dono (não para um
+influenciador full-time).
+Bloco 3 — DEMANDA: os 3 motores de aquisição desse segmento; o evento/ritual que ele pode operar;
+quem forma opinião nesse nicho.
+Bloco 4 — CONVERSÃO: como o lead é qualificado, distribuído e fechado; a oferta; a remuneração do time.
+Bloco 5 — EXPANSÃO: as outras prateleiras do MESMO cliente; o que gera recompra e recorrência aqui.
+Bloco 6 — CANAIS DE TERCEIROS: quem já tem o cliente que ele quer, e se a oferta vale 20-30%% para esse
+parceiro (senão ele não bota energia).
+FECHO — os 5 próximos passos, cada um com NOME, NÚMERO e PRAZO. Nunca "invista em marketing".
+
+=== TOM ===
+Direto, provocador, matemático, generoso. Você separa o que a pessoa confunde. Você dá o diagnóstico
+duro em uma frase. Você faz a conta antes de dar a ideia. Português do Brasil.
+
+=== FORMATO DE SAÍDA ===
+Devolva SOMENTE o conteúdo HTML do corpo — nada de <html>, <head>, <body>, <style> ou ```html.
+Comece direto em <section>. Use apenas estas tags/classes (o CSS já existe):
+<section>...</section>                          bloco principal
+<h2>Bloco 0 — Arquitetura do negócio</h2>       título de bloco
+<h3>...</h3>                                    subtítulo
+<p>...</p>  <ul><li>...</li></ul>  <b>  <table><tr><th><td>
+<blockquote>fala sua, verbatim, tirada da doutrina</blockquote>
+<div class="conta">a conta feita, passo a passo</div>
+<div class="acao">ação concreta com nome, número e prazo</div>
+<div class="pergunta">número que falta e que ele precisa te dar</div>
+<div class="lacuna">onde a doutrina não cobre bem esse segmento</div>
+<span class="fonte">Mx.x · videoId</span>
+Entregue o playbook COMPLETO, todos os blocos. Sem preâmbulo e sem despedida."""
+
+PLAYBOOK_CSS = """*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0e12;color:#d6d8e0;font:15px/1.75 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:0}
+.wrap{max-width:860px;margin:0 auto;padding:48px 20px 90px}
+.cab{border-bottom:1px solid #2a2d38;padding-bottom:26px;margin-bottom:38px}
+.eyebrow{color:#8b8e98;font-size:12px;letter-spacing:.13em;text-transform:uppercase;margin-bottom:10px}
+h1{color:#e8c07a;font-size:clamp(24px,5vw,34px);line-height:1.25;font-weight:800;letter-spacing:-.02em}
+.sub{color:#8b8e98;font-size:14px;margin-top:12px}
+h2{color:#e8c07a;font-size:clamp(19px,4vw,23px);margin:52px 0 6px;font-weight:800;letter-spacing:-.01em}
+h2::after{content:'';display:block;width:46px;height:2px;background:#6a5426;margin-top:12px}
+h3{color:#c9cbd4;font-size:16.5px;margin:30px 0 10px;font-weight:700}
+p{margin:12px 0}
+ul{margin:12px 0 12px 20px}li{margin:7px 0}
+b{color:#f0f1f5}
+blockquote{border-left:3px solid #6a5426;background:#14161c;margin:20px 0;padding:15px 20px;border-radius:0 9px 9px 0;color:#c9cbd4;font-style:italic}
+table{width:100%;border-collapse:collapse;margin:20px 0;font-size:13.5px;display:block;overflow-x:auto}
+th{background:#181a21;color:#e8c07a;text-align:left;font-weight:700}
+th,td{border:1px solid #2a2d38;padding:10px 13px;vertical-align:top}
+.conta,.acao,.pergunta,.lacuna{margin:20px 0;padding:15px 19px;border-radius:11px;font-size:14.2px}
+.conta{background:#11161b;border:1px solid #2b4150}
+.conta::before{content:'A CONTA';display:block;color:#6fa8c7;font-size:11px;letter-spacing:.13em;font-weight:800;margin-bottom:8px}
+.acao{background:#101a12;border:1px solid #2c4a32}
+.acao::before{content:'FAZER';display:block;color:#71b37f;font-size:11px;letter-spacing:.13em;font-weight:800;margin-bottom:8px}
+.pergunta{background:#1a1710;border:1px solid #524126}
+.pergunta::before{content:'ME DIZ ESSE NÚMERO';display:block;color:#d1a55c;font-size:11px;letter-spacing:.13em;font-weight:800;margin-bottom:8px}
+.lacuna{background:#1a1214;border:1px solid #5a2f38}
+.lacuna::before{content:'AQUI A DOUTRINA É FINA';display:block;color:#d1737f;font-size:11px;letter-spacing:.13em;font-weight:800;margin-bottom:8px}
+.fonte{display:inline-block;background:#181a21;border:1px solid #2a2d38;color:#8b8e98;font-size:11px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 8px;border-radius:6px;margin-left:5px;white-space:nowrap}
+.rodape{margin-top:70px;border-top:1px solid #2a2d38;padding-top:22px;color:#6c6f7a;font-size:12px;line-height:1.7}
+@media(max-width:600px){.wrap{padding:30px 16px 70px}}"""
+
+PLAYBOOK_DOC = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%(titulo)s</title><style>%(css)s</style></head><body><div class="wrap">
+<div class="cab"><div class="eyebrow">Playbook · %(nome)s</div><h1>%(titulo)s</h1>
+<div class="sub">%(sub)s</div></div>
+%(corpo)s
+<div class="rodape">Gerado pelo agente-advisor a partir da doutrina de %(nome)s (%(chars)s caracteres,
+%(nvideos)s vídeos-fonte). Cada recomendação cita o módulo e o videoId de origem.<br>%(carimbo)s</div>
+</div></body></html>"""
+
+def _nvideos(slug):
+    try:
+        return len(json.loads(ler(pd(slug, 'consolidado.json')) or '[]'))
+    except Exception:
+        return 0
+
+def montar_playbook(segmento, empresa_slug=None, area_slug=None, advisor_slug=None,
+                    perguntas='', titulo=''):
+    """Gera o playbook HTML: doutrina do advisor + contexto da empresa + segmento."""
+    aslug = advisor_slug if (advisor_slug and any(x['slug'] == advisor_slug for x in advisors())) else adv_slug()
+    adv = next((x for x in advisors() if x['slug'] == aslug), dict(ADVISOR_PADRAO))
+    dout = doutrina(aslug)
+    if not dout.strip():
+        raise RuntimeError('Advisor "%s" está sem doutrina e sem mente.' % aslug)
+
+    ctx = contexto_para_chat(empresa_slug, area_slug)
+    emp = _empresa_por_slug(empresa_slug)
+    emp_nome = (emp or {}).get('nome', '')
+
+    user = ['=== DOUTRINA DE %s ===' % adv['nome'].upper(), dout,
+            '', '=== O NEGÓCIO ===', 'SEGMENTO: ' + segmento]
+    if ctx.strip():
+        user += ['', '=== CONTEXTO DA EMPRESA (do banco de contexto) ===', ctx]
+    else:
+        user += ['', '(Sem contexto cadastrado: trabalhe com o segmento e PERGUNTE os números que faltarem.)']
+    if perguntas.strip():
+        user += ['', '=== O QUE ELE QUER RESOLVER ===', perguntas.strip()]
+    user += ['', 'Entregue o playbook completo agora, em HTML, seguindo o protocolo e as 5 regras.']
+
+    corpo = llm(PLAYBOOK_SYS % {'nome': adv['nome']}, '\n'.join(user),
+                max_tokens=16000, model=MODEL)
+    corpo = re.sub(r'^\s*```(?:html)?\s*|\s*```\s*$', '', corpo.strip())
+
+    tit = titulo.strip() or ('Playbook — ' + (emp_nome or segmento))
+    sub = ' · '.join(x for x in [emp_nome, segmento] if x)
+    doc = PLAYBOOK_DOC % {'titulo': tit, 'css': PLAYBOOK_CSS, 'corpo': corpo, 'sub': sub,
+                          'nome': adv['nome'], 'chars': '{:,}'.format(len(dout)).replace(',', '.'),
+                          'nvideos': _nvideos(aslug),
+                          'carimbo': datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
+    return doc, aslug, tit
+
+def _pb_nome(titulo):
+    return '%s-%s.html' % (datetime.datetime.now().strftime('%Y%m%d-%H%M'), _slug(titulo))
+
+@app.route('/api/doutrina', methods=['GET', 'POST'])
+def api_doutrina():
+    """GET  /api/doutrina?advisor=slug   -> {slug, chars, texto}
+       POST {advisor, texto}             -> grava data/advisors/<slug>/doutrina.md"""
+    if request.method == 'GET':
+        s = request.args.get('advisor') or adv_slug()
+        return jsonify({'slug': s, 'chars': len(ler(pd(s, DOUTRINA_ARQ))), 'texto': ler(pd(s, DOUTRINA_ARQ))})
+    d = request.get_json(force=True) or {}
+    s = d.get('advisor') or adv_slug()
+    txt = d.get('texto', '')
+    if not txt.strip():
+        return jsonify({'erro': 'texto vazio'}), 400
+    gravar(pd(s, DOUTRINA_ARQ), txt)
+    log('doutrina gravada: %s (%d chars)' % (s, len(txt)))
+    return jsonify({'ok': True, 'slug': s, 'chars': len(txt)})
+
+@app.route('/api/playbook', methods=['POST'])
+def api_playbook():
+    """POST {segmento, empresa?, area?, advisor?, perguntas?, titulo?, salvar?}
+       -> {ok, arquivo, url, chars, html}"""
+    d = request.get_json(force=True) or {}
+    seg = (d.get('segmento') or '').strip()
+    if not seg:
+        return jsonify({'erro': 'informe o segmento'}), 400
+    try:
+        html, aslug, tit = montar_playbook(
+            seg, d.get('empresa'), d.get('area'), d.get('advisor'),
+            d.get('perguntas', ''), d.get('titulo', ''))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'erro': str(e)}), 500
+    arq = ''
+    if d.get('salvar', True):
+        arq = _pb_nome(tit)
+        gravar(pd(aslug, PLAYBOOKS_DIR, arq), html)
+        log('playbook gerado: %s' % arq)
+    return jsonify({'ok': True, 'arquivo': arq, 'url': ('/api/playbook/' + arq) if arq else '',
+                    'chars': len(html), 'html': html})
+
+@app.route('/api/playbooks')
+def api_playbooks():
+    s = request.args.get('advisor') or adv_slug()
+    out = []
+    for f in sorted(glob.glob(pd(s, PLAYBOOKS_DIR, '*.html')), reverse=True):
+        n = os.path.basename(f)
+        out.append({'arquivo': n, 'titulo': n[14:-5].replace('-', ' '),
+                    'quando': n[:13], 'chars': os.path.getsize(f)})
+    return jsonify(out)
+
+@app.route('/api/playbook/<arq>')
+def api_playbook_get(arq):
+    s = request.args.get('advisor') or adv_slug()
+    if '/' in arq or '\\' in arq or not arq.endswith('.html'):
+        return jsonify({'erro': 'nome inválido'}), 400
+    h = ler(pd(s, PLAYBOOKS_DIR, arq))
+    if not h:
+        return jsonify({'erro': 'não encontrado'}), 404
+    return Response(h, mimetype='text/html')
+
+@app.route('/api/playbook/<arq>', methods=['DELETE'])
+def api_playbook_del(arq):
+    s = request.args.get('advisor') or adv_slug()
+    if '/' in arq or '\\' in arq or not arq.endswith('.html'):
+        return jsonify({'erro': 'nome inválido'}), 400
+    f = pd(s, PLAYBOOKS_DIR, arq)
+    if os.path.exists(f):
+        os.remove(f)
+    return jsonify({'ok': True})
+
 @app.route('/')
 def painel():
     return Response(ler(os.path.join(BASE, 'painel.html')), mimetype='text/html')
