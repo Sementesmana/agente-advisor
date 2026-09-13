@@ -1316,13 +1316,21 @@ def _indice_modulos(slug):
     linhas = re.findall(r'^##+\s*(M[\d.]+)\s*[—-]\s*(.+)$', doutrina(slug), re.M)
     return '\n'.join('%s — %s' % (c, t.strip()) for c, t in linhas) or '(doutrina ainda vazia)'
 
-def extrair_doutrina(v, slug=None):
-    """Le a TRANSCRICAO (nao a sintese, que ja comprimiu) e anexa o bloco em doutrina-incrementos.md.
-    Idempotente: se o videoId ja tem bloco, nao duplica."""
+def ja_na_doutrina(vid, slug=None):
+    """O video ja esta coberto? Tanto faz se veio do nucleo curado a mao (que cita o
+    videoId em crase) ou de um incremento automatico — reprocessar duplicaria."""
     slug = slug or adv_slug()
-    inc = ler(pd(slug, DOUTRINA_INC))
-    if ('## [%s]' % v['id']) in inc:
+    if ('## [%s]' % vid) in ler(pd(slug, DOUTRINA_INC)):
+        return True
+    return ('`%s`' % vid) in ler(pd(slug, DOUTRINA_ARQ))
+
+def extrair_doutrina(v, slug=None, forcar=False):
+    """Le a TRANSCRICAO (nao a sintese, que ja comprimiu) e anexa o bloco em doutrina-incrementos.md.
+    Idempotente: nao reprocessa video ja coberto pelo nucleo nem por incremento anterior."""
+    slug = slug or adv_slug()
+    if not forcar and ja_na_doutrina(v['id'], slug):
         return ''
+    inc = ler(pd(slug, DOUTRINA_INC))
     txt = ler(pd(slug, 'transcricoes', v['id'] + '.txt'))
     if not txt.strip():
         return ''
@@ -1468,15 +1476,15 @@ def api_doutrina_extrair():
     slug = d.get('advisor') or adv_slug()
     ids = d.get('ids')
     vids = json.loads(ler(pd(slug, 'videos.json')) or '[]')
+    forcar = bool(ids) and bool(d.get('forcar'))
     if not ids:
-        inc = ler(pd(slug, DOUTRINA_INC))
         cons = set(json.loads(ler(pd(slug, 'consolidado.json')) or '[]'))
-        ids = [x for x in cons if ('## [%s]' % x) not in inc]
+        ids = [x for x in cons if not ja_na_doutrina(x, slug)]
     feitos, erros = [], []
     for vid in ids:
         v = next((x for x in vids if x['id'] == vid), {'id': vid, 'titulo': vid})
         try:
-            if extrair_doutrina(v, slug):
+            if extrair_doutrina(v, slug, forcar):
                 feitos.append(vid)
         except Exception as e:
             erros.append('%s: %s' % (vid, e))
