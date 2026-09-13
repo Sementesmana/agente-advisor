@@ -354,6 +354,28 @@ dinheiro**. Ganhei 1 milhão? Tenho 10 mil por mês agora."*
 > "**Qual preço eu estou disposto a pagar para qual riqueza?** Hoje, para mim, o PREÇO faz mais sentido do
 > que o RESULTADO."
 
+
+**A RÉGUA DE SAÚDE DA AQUISIÇÃO** — `KxCoAB-1MYY`:
+> **LTV ≥ 3× CAC, e o CAC tem que voltar em no máximo 12 meses.**
+Fora disso a operação não é saudável — cresce queimando caixa. E o CAC honesto inclui **publicidade,
+anúncio, horas trabalhadas e bônus** por conta que entra, não só a mídia.
+
+**AS DUAS GAVETAS (a fórmula básica, dita pelo pai dele)** — `KxCoAB-1MYY`: *entra dinheiro numa,
+sai na outra, e tem que sair menos do que entra.* Parece banal, mas é a régua que separa **o negócio
+tradicional** da exceção que capta investimento e opera no prejuízo: *"menos de 1% serão como as
+empresas que recebem milhões e depois geram fortunas mesmo dando prejuízo. São modelos diferentes."*
+→ Desde o primeiro dia: **precificação certa, margem calculada, reserva para o momento difícil.**
+
+**O INVESTIDOR É O CLIENTE (a tese do bootstrap)** — `KxCoAB-1MYY`:
+> "Se o meu negócio é bom, tem alguém que vai querer comprar o que estou vendendo."
+Eles cogitaram investimento e recusaram por **dois motivos declarados**: (1) a energia administrativa
+e de controle **tiraria o foco da visão do negócio**; (2) o investidor **poderia atrapalhar a venda**
+futura, pressionando por um valuation maior. O preço dessa escolha é explícito — *risco maior, sem
+rede de segurança* — e o retorno foi transacionar centenas de milhões **sem levantar um real**.
+→ Conecta com M0.2: **quem tem que enriquecer é a empresa.** A auditoria que ele levou de um primo
+foi essa: *"em vez de você trabalhar para ele, ele está trabalhando para você"* — ele retirava
+dinheiro conforme a necessidade e achava que o negócio é que não dava dinheiro.
+
 ## M0.6 — PORTFÓLIO, MARCAS E MATURIDADE
 
 **AGRUPAR em vez de pulverizar** — `enL6rfEMNGM`:
@@ -520,6 +542,21 @@ Se a resposta é não, a marca não faz.
 **Rebrand como ajuste de posicionamento** — `XjcsA-kFk30`: coral/laranja puxava para o popular; mudaram
 para o clássico porque *"clássico é atemporal, não é modinha — a gente vai existir 100 anos."*
 
+
+**O NOME QUE COLA NO LÍDER (a tática mais barata de credibilidade)** — `KxCoAB-1MYY`:
+A XTech foi batizada **de propósito** para soar como a VTEX, a maior do mercado.
+> "É muito positivo você ser confundido com o maior player do mercado."
+O efeito foi literal: cliente chegava perguntando do evento *da outra*, e chegou a **pedir ingresso**
+para o evento da líder achando que era da XTech — que arrumava. Uma agência parceira das duas chegou
+a anunciar *"crie sua loja VTEX por 15 dias grátis"* querendo dizer XTech.
+**A régua:** não é imitar produto, é **ocupar a mesma prateleira mental** de quem já construiu a
+categoria — e depois abrir o jogo com o líder, que foi o que ele fez (virou mentor e comprador, M0.7).
+
+**NOME ÓBVIO > NOME CRIATIVO** — `KxCoAB-1MYY`: a agência anterior se chamava Marketing Shop — duas
+palavras comuns que **não precisam de explicação**. *"Está na cara o que a empresa faz"*: facilita a
+comunicação, facilita ser encontrado, e **a familiaridade já gera credibilidade** antes da primeira
+conversa. Nome que exige explicação custa mídia todo mês.
+
 ## M1.4 — ANCORAGEM DE PERCEPÇÃO (a alavanca mais barata de marca)
 
 **Colocar a marca própria AO LADO das admiradas, não escondida delas** — `h3qGtgkADDI`:
@@ -548,6 +585,28 @@ unidade: é para dar uma valorizada bizarra na marca e fazer o cara ultra-rico v
 > "É muito melhor você ter Red Bull no teu evento do que ter o teu energético. **Você puxa muito mais
 > ATRIBUIÇÃO** e tem muito menos trabalho. E quando você começa a botar tua marca em tudo, **a tua marca
 > perde relevância.** Eu prefiro ser CO-BRAND de uma parada do que ter a minha marca num energético."
+
+
+### MARKETING DE PERCEPÇÃO — o caso de origem desta alavanca — `KxCoAB-1MYY`
+
+Antes de ter empresa grande, ele construiu a **percepção** de empresa grande. Três execuções, todas
+de custo quase zero, documentadas por ele mesmo:
+
+| O que precisava parecer | O que fez | O que era de verdade |
+|---|---|---|
+| Escritório de empresa estruturada | Tirou a foto da matéria **na escada industrial de um restaurante** — parede de tijolo, escada moderna: *"vão achar que nosso escritório já é duplex"*. Virou a foto oficial da empresa por um ano. | Sala de 30 m², mesa feia, cadeiras de cores diferentes, parede preta de um ex-bingo |
+| Central de atendimento | Alugou um **0800** | Tocava no celular dele — *"eu atendia aquele 0800 com três nomes diferentes"* |
+| Presença de imprensa | Assessoria que **custava uma fortuna** para o tamanho deles, desde o primeiro ano | Chegou a render **duas entrevistas por semana** |
+
+> "Não estou falando para mentir, mas para construir uma percepção em torno do seu negócio."
+
+E a justificativa que ele dá, que é a régua ética da tática: **todo mundo já faz isso** — *"ninguém
+posta foto do boleto chegando"*. A percepção que se constrói tem que estar **de acordo com a
+estratégia**, não com o que você gostaria de ser.
+
+**O uso não-óbvio da assessoria**: não é sair na mídia, é **abrir porta**. Estando em Belo Horizonte,
+ligou para o assessor pedindo para conhecer o fundador de uma empresa que admirava — **e conheceu no
+mesmo dia**. *"Assessoria existe para que você faça os contatos certos."*
 
 ## M1.5 — A COMPOSIÇÃO DA AUDIÊNCIA DEFINE O TETO DO SEU PREÇO
 
@@ -797,6 +856,36 @@ Critério herdado do Mariano: **"tem racional? tem. Então FAZ."**
 
 **Entrar pela comunidade onde o consumidor JÁ ESTÁ** — `IS9Tm49nGxI`: fóruns de musculação, grupos de
 Facebook. E: **postar com o nome da MARCA desde o dia 1**, não o nome pessoal.
+
+
+### O PRODUTO É FEITO PARA O CANAL, NÃO O CONTRÁRIO — `KxCoAB-1MYY`
+
+A inversão que quase ninguém faz: a maioria das empresas pensa **produto e canal em silos separados**
+— e por isso um não encaixa no outro.
+
+As quatro regras que ele enuncia:
+1. **O canal define a regra** de como ele funciona — você não negocia com o canal.
+2. **Você controla apenas o seu produto**, nunca o canal.
+3. Produtos são construídos para aproveitar **um canal específico**.
+4. Sem silo entre o time de aquisição e o de produto — o ruído mora entre as duas pontas.
+
+**Os três arquétipos de crescimento** (em cada um deles, **mais de 70% do crescimento** vem de UMA
+fonte): **mídia paga** (games, e-commerce de moda, clubes de assinatura) · **conteúdo gerado pelo
+usuário** (enciclopédias, fóruns, sites de avaliação) · **viral/compartilhamento** (mensageiros,
+ferramentas de trabalho em equipe).
+→ **Priorize um ou dois canais por vez** para achar a sua lei de potência, medindo retenção por
+período e o investimento necessário para atrair o cliente.
+
+**DARK SOCIAL — o canal que não aparece no analytics** — `KxCoAB-1MYY`:
+grupos fechados, WhatsApp, chats privados, encaminhamento direto. **Não tem métrica**, e ele estima
+que responde por **~75% dos compartilhamentos** na internet. *"Tudo que populariza ou viraliza se dá
+por um fluxo forte de dark social."* Consequência prática: a rotina de mandar Direct sempre que
+identificavam alguém pesquisando plataforma — o canal que não mede é o que carrega o resto.
+
+**E a regra que amarra o bloco:** *"não tem como você continuar encontrando clientes novos e estar
+sempre no mesmo ambiente."* Eles tinham **o desafio semanal de achar um canal novo de captação**, e o
+medo declarado era o de sempre: apostar tudo num canal, o algoritmo mudar, e o faturamento cair pela
+metade.
 
 ## M2.5 — GESTÃO POR CANAL
 
@@ -1313,6 +1402,70 @@ Quando o produto serve a qualquer empresa, ou você vai para **marketing setoria
 empresarial genérico** — e enquanto não estiver decidido, *"**você vai dar tiro para trazer lead e vai
 trazer lead pequeno ou ruim**."*
 
+**A MARCA AGNÓSTICA COMO CAVALO DE TROIA NA BASE DO CONCORRENTE** — `KxCoAB-1MYY`:
+O caso de origem da tática, e o uso mais agressivo dela. O cliente ideal daquele momento era **quem
+já tinha loja virtual em outra plataforma** — e que, ao ser abordado por qualquer solução, já
+desconfiava que iam tentar vender migração.
+A saída: criar **um blog e várias ferramentas com nomes genéricos** (uma que ajudava com estoque,
+outra que criava aplicativo da loja, um grupo de conteúdo) — todas mirando **o mesmo cliente**, todas
+servindo para **entrar na base das plataformas concorrentes sem nunca tocar no assunto migração**.
+→ O objetivo declarado não era vender: era **conseguir o contato** do lojista que um dia poderia
+migrar. Uma dessas iniciativas virou a segunda empresa dele.
+**A régua:** a marca agnóstica não disputa o cliente do concorrente — ela **resolve um problema que o
+concorrente não resolve**, e assim entra na casa dele pela porta da frente.
+
+**COLAR NO CONCORRENTE PARA HERDAR A AUDIÊNCIA DELE** — `KxCoAB-1MYY`:
+A XTech se posicionou deliberadamente **entre a líder de cauda longa e os clientes menores**: estande
+ao lado do deles nos eventos, anúncios nas mesmas mídias, tudo declarado.
+> "Ficamos como carrapatos no radar deles."
+E o efeito colateral que era o objetivo real: *"íamos ganhando audiência porque era muito evidente o
+que estávamos fazendo."* **Declarar publicamente quem é o seu concorrente é uma jogada de audiência**
+— mas tem prazo: foi o próprio comprador quem disse que essa briga **precisava acabar** antes de
+qualquer negócio acontecer (M0.7).
+
+## M3.8 — CLIENTE IDEAL E A SEQUÊNCIA DE CONQUISTA (o protocolo, não a intuição)
+
+Este módulo é quase todo do livro — `KxCoAB-1MYY` — e é a parte mais operável dele.
+
+### M3.8.1 — Como achar o cliente ideal QUANDO JÁ SE TEM BASE
+1. Mapeie a série histórica e extraia os **20% de maior LTV** — *pagam mais, por mais tempo*.
+2. Ache a **correlação** entre eles, respondendo a oito perguntas: **segmento · porte · região ·
+   maior desafio · menor custo de aquisição · ciclo de fechamento mais curto · melhor canal para
+   prospectar · com qual perfil o produto tem maior valor percebido.**
+3. As respostas viram o mapa das próximas ações de aquisição.
+
+> **Não é o cliente para quem você vendeu na empolgação da meta** — é quem tem maior ticket e
+> recorrência.
+
+### M3.8.2 — Como achar QUANDO NÃO SE TEM HISTÓRICO
+1. Defina **cinco segmentos** possíveis.
+2. **Cinco entrevistas em cada um** para entender desafio, objetivo e processo.
+3. Crie uma **agenda de experimentos por segmento** — páginas de captura e campanhas específicas.
+4. Compare **ticket médio × conversão × custo de aquisição** e escale só o vencedor.
+
+### M3.8.3 — A ESTRATÉGIA DE CONQUISTA GEOGRÁFICA (a jogada de Otelo)
+O mercado mais óbvio era o pior lugar para começar: **São Paulo estava saturado** de oferta e **o Sul
+era bairrista** — *só fechava com fornecedor conhecido*. A decisão foi **construir autoridade onde
+havia menos gente oferecendo**: Rio de Janeiro, Centro-Oeste e Nordeste primeiro.
+> Chegar em São Paulo **já sendo relevante**; e no Sul, já como empresa nacional, com parceiro local.
+Não é deixar de vender para os outros estados — é **onde você põe a maior energia**. Resultado
+declarado: crescer com **CAC menor** e ganhar autoridade e cases mais rápido.
+
+### M3.8.4 — A ORDEM DE SEGMENTAÇÃO (uma fronteira por vez)
+```
+região  →  nicho (começou por moda; UM nicho novo por mês)
+        →  porte (primeiro pequenas, depois médias)
+        →  loja física que ainda não vende online
+        →  loja que já vende online (migração)  ← o mais difícil, por último
+```
+**A régua:** cada fronteira nova só abre depois que a anterior está dominada. E o crescimento
+acompanhou: de 5 lojas/dia (2014) para 15, 40, 60 — e, quando descobriram o que automatizar,
+**190 por dia em dois meses**.
+
+→ Conecta com M3.7: *"36 segmentos é ruim: você não vai pegar 36 ondas"* (`piPTXwDP2PM`). O livro dá
+a sequência; o vídeo dá o limite.
+
+
 ---
 ---
 
@@ -1649,6 +1802,74 @@ número lá"*; resposta: **três reuniões em duas cidades no mesmo dia. "Não t
 **Live/miniaula semanal como isca de TEMA, não de produto** — `TnognJG05BU`:
 *"Toda quinta, 30 minutos sobre o tema com um mentor."* E segmenta a jornada por geografia: cliente da
 capital → evento presencial; de fora → live.
+## M4.10 — ROTINA × AUTOMAÇÃO E OS NÚMEROS DO FUNIL
+
+Módulo quase todo do livro — `KxCoAB-1MYY`.
+
+### M4.10.1 — Por que eles escolheram ROTINA em vez de automação
+A decisão mais contraintuitiva do acervo: **queriam menos gente e mais automação, e mesmo assim
+investiram primeiro em rotina.** Disparar anúncio e e-mail para quem não os conhecia gastava muito
+para fechar pouco — **o CAC subia**. Então cada pessoa do time passou a abordar **um número fixo de
+clientes por dia**, no Instagram e por e-mail, de forma personalizada e sem papo de vendedor logo de
+cara. *"Todo dia são mais umas 100 pessoas novas conhecendo a gente"* — e quando virem o nome de novo
+em algum lugar, vão lembrar. **Não existe trabalho à toa.**
+
+> "Automatização é para os chatos, para os perfeccionistas. As máquinas são muito burras."
+
+**A régua do custo escondido da automação:** para automatizar uma régua de e-mails que vende sozinha,
+*"você precisa escrever 17 e-mails"* — todos pensados para derrubar objeção, criar urgência e
+responder à fase de compra certa. **Automatizar exige entender o processo antes.** Às vezes se perde
+mais tempo automatizando do que investindo em rotina.
+→ **Diagnóstico:** automatize o que já está funcionando em rotina. Automatizar o que você ainda não
+entende só escala o erro.
+
+### M4.10.2 — QUANDO O LEAD VIRA CLIENTE (a definição que reorganiza o time)
+Na XTech, **o lead não virava cliente ao criar a loja — virava ao fazer a PRIMEIRA VENDA.**
+> "A venda não acontece no pagamento e sim na entrega da solução."
+Consequência: existe um time cuja função é levar o cliente até a primeira venda dele. Sem isso, você
+tem contrato assinado e cliente que evapora.
+→ **Pergunta de diagnóstico:** *qual é o evento, na sua operação, em que o cliente finalmente teve o
+resultado?* É esse o marco que o time tem que perseguir — não a assinatura.
+
+### M4.10.3 — OS TIMES SEPARADOS E O LOOP QUE CORRIGE A AQUISIÇÃO
+```
+GROWTH → prospecção fria, por segmento, cada segmentação com sua rotina
+ONBOARD → o cliente testa; a venda ainda NÃO aconteceu
+CS      → leva à primeira venda e recolhe a dificuldade real
+PRODUTO → recebe do CS e trabalha para aumentar retenção
+RETENÇÃO → prevê quem vai sair — e DEVOLVE a informação ao GROWTH
+```
+**O loop é a peça:** a retenção não serve só para salvar cliente; serve para dizer à aquisição que
+ela **está trazendo o perfil errado**. No caso deles: lojista que vendia por WhatsApp e não se
+qualificava para ter e-commerce. Por isso o Growth passou a checar sinais de comprometimento
+(tem contador? tem loja física?) **antes** de considerar o lead.
+
+### M4.10.4 — OS NÚMEROS DUROS (para dimensionar e cobrar o time)
+| Número | O que é | Consequência |
+|---|---|---|
+| **400 leads/mês (20/dia)** | teto do que **uma pessoa** consegue gerenciar | é isto que dimensiona o time, não a meta |
+| **5 minutos** | depois disso a chance de contato efetivo **cai 10×** | velocidade de resposta é estratégia, não zelo |
+| **55%** das empresas | levam **até 5 dias** para responder um lead | o concorrente perde por lentidão, não por preço |
+| **48%** dos vendedores | **não fazem nenhum follow-up** | metade do mercado desiste no primeiro não |
+| **80%** das vendas | acontecem entre o **5º e o 12º contato** | só ~10% dos vendedores chegam lá |
+| **40–90%** | redução de custo de inside sales vs. venda em campo | o time interno é mais técnico e mais barato |
+| **6 a 12 meses** | ciclo de venda no ticket alto | ali não se marca reunião, se **nutre convivência** |
+
+**No ticket alto a mecânica muda** — `KxCoAB-1MYY`: em vez da abordagem insistente tentando marcar
+reunião, **criar momentos de convivência**: comentar o que ele publica, passar no escritório dele
+algumas vezes por mês, chamar para almoçar. *"Assim que esse cliente enxergá-lo como parceiro, ele
+irá indicar outros iguais a ele."*
+→ É a mesma lógica do M4.7 (visita ao escritório) e do M3.8.1 (o cliente ideal convive com gente do
+mesmo perfil): **o cliente ideal é micro-mídia do próprio segmento.**
+
+### M4.10.5 — SPIN: as quatro perguntas por trás da "consulta médica" (M4.3)
+O método que ele cita como base do diagnóstico: **Situação · Problema · Implicação · Necessidade.**
+O exemplo dele, vendendo plataforma: *qual o porte, já tem loja, quem decide* (situação) → *está
+preparado para atender integrado em todos os pontos de contato* (problema) → *percebeu que as marcas
+que mais crescem são as que estão onde o cliente está* (implicação) → *não seria bom entrar nesse
+mercado e ainda oferecer experiência multicanal* (necessidade).
+**A implicação é a etapa que quase todo mundo pula** — é ela que transforma problema em urgência.
+
 
 ---
 ---
@@ -2392,6 +2613,12 @@ foi essa regra que fez esta versão encontrar o que a mente do agente havia perd
 | `sVDlsmpxc74` | Presidente global da Oakley (Caio Amato) | 1,3 |
 | `hI6Xky9zaRg` | **"Não vai escalar sem entender riqueza"** — negócio × empresa | 0,5 |
 | `1ta_WwFeYOw` | Netão BomBeef — 5 negócios numa visita | 0,6 |
+| `KxCoAB-1MYY` | **LIVRO "Bora Vender" (audiolivro)** — fonte fora do acervo de vídeos | 0,1,2,3,4 |
+
+> O livro **não é vídeo do acervo**: entrou nesta doutrina por leitura direta da transcrição do
+> audiolivro. Como o videoId já é citado aqui, `ja_na_doutrina()` o considera coberto — se for
+> mandado pelo painel, será ignorado, que é o comportamento desejado (4h de biografia não devem
+> ser reprocessadas).
 
 ⚠️ **4 transcrições estão DUPLICADAS na produção** (texto inteiro repetido duas vezes):
 `XjcsA-kFk30` (120.200→60.043), `dyLlIiz0IbU` (71.020→35.455), `b2Fur8D7zQw` (49.393→24.645),
