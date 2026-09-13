@@ -442,6 +442,11 @@ def processar(ids=None):
                 princ = rotear(v)
                 if princ: arquivar(v, princ)
                 consolidados.append(v['id'])
+                try:
+                    if extrair_doutrina(v):
+                        log('Doutrina: bloco extraido de ' + v['id'])
+                except Exception as e:
+                    log('AVISO doutrina %s: %s (a mente foi consolidada normalmente)' % (v['id'], e))
             except Exception as e:
                 log('ERRO consolidação %s: %s' % (v['id'], e)); continue
         cons = set(json.loads(ler(pa('consolidado.json')) or '[]')) | set(consolidados)
@@ -1157,10 +1162,11 @@ def doutrina(slug=None):
     Fallback: a mente inteira (menos persona), se ainda não subiram a doutrina."""
     s = slug or adv_slug()
     d = ler(pd(s, DOUTRINA_ARQ))
-    if d.strip():
-        return d
-    return '\n\n'.join(ler(f) for f in sorted(glob.glob(pd(s, 'mente', '*.md')))
-                       if not f.endswith('persona.md'))
+    if not d.strip():
+        d = '\n\n'.join(ler(f) for f in sorted(glob.glob(pd(s, 'mente', '*.md')))
+                         if not f.endswith('persona.md'))
+    inc = ler(pd(s, 'doutrina-incrementos.md'))
+    return (d + '\n\n---\n\n' + inc) if inc.strip() else d
 
 PLAYBOOK_SYS = """Você é %(nome)s. Não é um assistente resumindo o %(nome)s: você É ele, com o repertório
 dele, respondendo a um empresário que te contratou como advisor.
@@ -1265,6 +1271,79 @@ def _nvideos(slug):
     except Exception:
         return 0
 
+# ---------- DOUTRINA INCREMENTAL: video novo entra na doutrina, nao so na mente ----------
+DOUTRINA_INC = 'doutrina-incrementos.md'
+
+DOUTRINA_SYS = """Você extrai DOUTRINA de negócio da transcrição de UM vídeo, para a base que alimenta
+os playbooks do advisor %(nome)s.
+
+Isto NÃO é a "mente" (que roteia princípios por tema). É a DOUTRINA: o material bruto de onde saem
+recomendações citáveis. As regras são outras, e são estas:
+
+1. EXTRAIA PELO CONTEÚDO, NÃO PELO RÓTULO. Não decida o que vale pelo tema em que cabe.
+2. SEM FILTRO DE LOCUTOR. O que um convidado disse e %(nome)s endossou, desdobrou ou usou como
+   base de raciocínio FAZ PARTE da doutrina. MARQUE quem disse: **[%(nome)s]** ou **[Nome do convidado]**.
+3. PRESERVE O CONCRETO. Números, nomes de empresa, valores, percentuais, prazos, o mecanismo passo a
+   passo. Um princípio sem o mecanismo é inútil. Cite frases verbatim fortes entre aspas.
+4. NÃO RESUMA PARA CABER. Se o vídeo tem 30 coisas boas, traga 30. Se tem 3, traga 3.
+5. ANCORE NOS MÓDULOS EXISTENTES quando o conteúdo for do mesmo assunto — use o código (M4.1, M0.3…).
+   Quando for assunto NOVO que a doutrina não cobre, escreva NOVO em vez do código e proponha um título.
+
+MÓDULOS QUE JÁ EXISTEM NA DOUTRINA:
+%(indice)s
+
+SAÍDA — markdown, exatamente neste formato, sem preâmbulo e sem despedida:
+
+## [%(vid)s] %(titulo)s
+<uma linha de contexto: o que é o vídeo, quem participa, números de porte se houver>
+
+- **[Quem disse] Título curto do princípio.** `M4.1` — corpo rico: o princípio, o MECANISMO de como
+  aplicar, e os números/nomes/cases concretos. Frase verbatim entre aspas quando ela for forte.
+- **[Quem disse] Outro princípio.** `NOVO: Título proposto` — idem."""
+
+def _dedup_transcricao(t):
+    """4 transcricoes do acervo vieram com o texto inteiro repetido 2x (o dobro do custo
+    de LLM em toda chamada). Corta na repeticao quando ela existe."""
+    c = t.split('\n', 2)[-1] if t.count('\n') >= 2 else t
+    if len(c) < 2000:
+        return t
+    sig = c[:300]
+    dup = c.find(sig, 300)
+    return c[:dup] if dup > 0 else c
+
+def _indice_modulos(slug):
+    """Lista 'M0.1 — Titulo' a partir da doutrina, pro extrator saber onde ancorar."""
+    linhas = re.findall(r'^##+\s*(M[\d.]+)\s*[—-]\s*(.+)$', doutrina(slug), re.M)
+    return '\n'.join('%s — %s' % (c, t.strip()) for c, t in linhas) or '(doutrina ainda vazia)'
+
+def extrair_doutrina(v, slug=None):
+    """Le a TRANSCRICAO (nao a sintese, que ja comprimiu) e anexa o bloco em doutrina-incrementos.md.
+    Idempotente: se o videoId ja tem bloco, nao duplica."""
+    slug = slug or adv_slug()
+    inc = ler(pd(slug, DOUTRINA_INC))
+    if ('## [%s]' % v['id']) in inc:
+        return ''
+    txt = ler(pd(slug, 'transcricoes', v['id'] + '.txt'))
+    if not txt.strip():
+        return ''
+    adv = next((x for x in advisors() if x['slug'] == slug), dict(ADVISOR_PADRAO))
+    bloco = llm(DOUTRINA_SYS % {'nome': adv['nome'], 'indice': _indice_modulos(slug),
+                                'vid': v['id'], 'titulo': v['titulo']},
+                'TRANSCRIÇÃO:\n' + _dedup_transcricao(txt)[:180000],
+                max_tokens=8000, model=MODEL)
+    bloco = re.sub(r'^\s*```(?:markdown)?\s*|\s*```\s*$', '', bloco.strip())
+    if not bloco:
+        return ''
+    # O header e escrito pelo CODIGO, nunca pelo LLM: a idempotencia (e a auditoria de
+    # fonte) dependem do videoId estar exato. Se o modelo escreveu um, descarta.
+    bloco = re.sub(r'^##\s*\[[^\]]*\][^\n]*\n?', '', bloco).strip()
+    bloco = '## [%s] %s\n%s' % (v['id'], v.get('titulo', v['id']), bloco)
+    cab = '' if inc.strip() else ('# Incrementos da doutrina\n'
+          'Extraidos automaticamente dos videos processados depois do catalogo inicial.\n'
+          'Mesma regra: pelo CONTEUDO, sem filtro de locutor, marcando quem disse.\n')
+    gravar(pd(slug, DOUTRINA_INC), (inc.rstrip() + '\n\n' if inc.strip() else cab) + bloco + '\n')
+    return bloco
+
 def _ids_reais(slug):
     """Os videoIds que realmente existem na base do advisor (consolidados + transcritos)."""
     ids = set()
@@ -1368,7 +1447,10 @@ def api_doutrina():
        POST {advisor, texto}             -> grava data/advisors/<slug>/doutrina.md"""
     if request.method == 'GET':
         s = request.args.get('advisor') or adv_slug()
-        return jsonify({'slug': s, 'chars': len(ler(pd(s, DOUTRINA_ARQ))), 'texto': ler(pd(s, DOUTRINA_ARQ))})
+        inc = ler(pd(s, DOUTRINA_INC))
+        return jsonify({'slug': s, 'chars': len(doutrina(s)), 'texto': doutrina(s),
+                        'chars_nucleo': len(ler(pd(s, DOUTRINA_ARQ))), 'chars_incrementos': len(inc),
+                        'videos_incrementados': len(re.findall(r'^## \[', inc, re.M))})
     d = request.get_json(force=True) or {}
     s = d.get('advisor') or adv_slug()
     txt = d.get('texto', '')
@@ -1377,6 +1459,29 @@ def api_doutrina():
     gravar(pd(s, DOUTRINA_ARQ), txt)
     log('doutrina gravada: %s (%d chars)' % (s, len(txt)))
     return jsonify({'ok': True, 'slug': s, 'chars': len(txt)})
+
+@app.route('/api/doutrina/extrair', methods=['POST'])
+def api_doutrina_extrair():
+    """POST {ids?: [...], advisor?} -> extrai doutrina dos videos ja transcritos.
+    Sem ids: roda em todos os consolidados que ainda nao tem bloco."""
+    d = request.get_json(force=True) or {}
+    slug = d.get('advisor') or adv_slug()
+    ids = d.get('ids')
+    vids = json.loads(ler(pd(slug, 'videos.json')) or '[]')
+    if not ids:
+        inc = ler(pd(slug, DOUTRINA_INC))
+        cons = set(json.loads(ler(pd(slug, 'consolidado.json')) or '[]'))
+        ids = [x for x in cons if ('## [%s]' % x) not in inc]
+    feitos, erros = [], []
+    for vid in ids:
+        v = next((x for x in vids if x['id'] == vid), {'id': vid, 'titulo': vid})
+        try:
+            if extrair_doutrina(v, slug):
+                feitos.append(vid)
+        except Exception as e:
+            erros.append('%s: %s' % (vid, e))
+    return jsonify({'ok': True, 'extraidos': feitos, 'erros': erros,
+                    'chars_doutrina': len(doutrina(slug))})
 
 @app.route('/api/playbook', methods=['POST'])
 def api_playbook():

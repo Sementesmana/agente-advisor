@@ -155,7 +155,8 @@ Toda recomendação sai citando o módulo e o vídeo de origem.</p>
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <span style="font-size:13px;color:var(--dim)">Doutrina carregada:</span>
     <b id="pb-dout" style="color:var(--gold2)">—</b>
-    <button class="back" id="pb-dout-edit" style="margin-bottom:0;margin-left:auto">substituir</button>
+    <button class="back" id="pb-extrair" style="margin-bottom:0;margin-left:auto" title="Le as transcricoes dos videos que ainda nao entraram na doutrina">+ incorporar vídeos novos</button>
+    <button class="back" id="pb-dout-edit" style="margin-bottom:0">substituir</button>
   </div>
   <div id="pb-dout-box" style="display:none;margin-top:12px">
     <textarea id="pb-dout-txt" placeholder="Cole aqui o 02-catalogo.md inteiro" style="width:100%;min-height:130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--tx);font-size:12.5px;font-family:ui-monospace,monospace"></textarea>
@@ -531,7 +532,9 @@ document.addEventListener('change',e=>{
 // ---------- PLAYBOOK ----------
 async function pbInit(){
   const d=await fetch('/api/doutrina').then(r=>r.json());
-  $('#pb-dout').textContent = d.chars ? d.chars.toLocaleString('pt-BR')+' caracteres' : 'nenhuma (vai usar a mente)';
+  $('#pb-dout').textContent = d.chars
+    ? d.chars.toLocaleString('pt-BR')+' caracteres'+(d.videos_incrementados?' ('+d.videos_incrementados+' vídeo(s) incorporado(s) depois do catálogo)':'')
+    : 'nenhuma (vai usar a mente)';
   const es=await fetch('/api/empresas-areas').then(r=>r.json());
   window._PBEA=es;
   const ativa=(es.find(e=>e.ativa)||es[0]||{}).slug;
@@ -555,6 +558,18 @@ async function pbLista(){
 async function pbDel(a){ if(!confirm('Excluir este playbook?'))return;
   await fetch('/api/playbook/'+a,{method:'DELETE'}); pbLista(); }
 $('#pb-emp').onchange=pbAreas;
+$('#pb-extrair').onclick=async()=>{
+  const b=$('#pb-extrair'); b.disabled=true; const t0=Date.now();
+  const tick=setInterval(()=>{$('#pb-status').textContent='lendo transcrições… '+Math.round((Date.now()-t0)/1000)+'s';},1000);
+  try{
+    const r=await fetch('/api/doutrina/extrair',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(r=>r.json());
+    clearInterval(tick); b.disabled=false;
+    $('#pb-status').textContent = r.extraidos.length
+      ? r.extraidos.length+' vídeo(s) incorporado(s) à doutrina'+(r.erros.length?' · '+r.erros.length+' erro(s)':'')
+      : 'nenhum vídeo novo para incorporar';
+    pbInit();
+  }catch(e){clearInterval(tick);b.disabled=false;$('#pb-status').textContent='erro: '+e.message;}
+};
 $('#pb-dout-edit').onclick=()=>{const b=$('#pb-dout-box');b.style.display=b.style.display==='none'?'block':'none';};
 $('#pb-dout-save').onclick=async()=>{
   const t=$('#pb-dout-txt').value; if(!t.trim())return alert('Cole a doutrina.');
