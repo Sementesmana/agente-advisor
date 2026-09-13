@@ -57,6 +57,10 @@ GW_URL = os.environ.get('LLM_GATEWAY_URL', '').rstrip('/')
 GW_KEY = os.environ.get('LLM_GATEWAY_KEY', '')
 MODEL = os.environ.get('LLM_MODEL', 'claude-sonnet-4-5')                 # chat do Advisor (qualidade)
 MODEL_SINTESE = os.environ.get('LLM_MODEL_SINTESE', 'mana-rapido')       # síntese/consolidação (barato = Haiku)
+# Parecer individual da mesa: lê a doutrina inteira e SELECIONA — dá para rodar mais barato
+# que o moderador, que é o texto que o empresário lê. Default = MODEL (não regride sozinho);
+# para cortar custo, setar LLM_MODEL_PARECER=mana-equilibrio e comparar a qualidade.
+MODEL_PARECER = os.environ.get('LLM_MODEL_PARECER', '') or MODEL
 CRON_HORA = int(os.environ.get('CRON_HORA', '7'))  # BRT
 YT_CHANNEL_ID = os.environ.get('YT_CHANNEL_ID', 'UCh9HMS4C3F02msM-kiilAdA')  # @canaldoalfredosoares
 PROXY_URL = os.environ.get('PROXY_URL', '')  # proxy residencial p/ YouTube (http://user:pass@host:porta)
@@ -172,6 +176,30 @@ def log(msg):
 def _gw_headers():
     return {'x-api-key': GW_KEY, 'Authorization': 'Bearer ' + GW_KEY,
             'anthropic-version': '2023-06-01', 'content-type': 'application/json'}
+
+def _sys_blocos(estatico, dinamico=''):
+    """System em blocos, com o pedaço ESTÁTICO (persona + doutrina) marcado para prompt caching.
+    A ordem importa: o cache é por prefixo, então o que não muda em nenhuma pergunta vem primeiro."""
+    blocos = [{'type': 'text', 'text': estatico, 'cache_control': {'type': 'ephemeral'}}]
+    if dinamico.strip():
+        blocos.append({'type': 'text', 'text': dinamico})
+    return blocos
+
+def _chamar(model, system, msgs, max_tokens=3000):
+    """Manda o system em blocos (é o que habilita o cache no gateway). Gateway que não entende
+    blocos responde 400/422 — aí repete UMA vez com o system achatado em string, e avisa no log.
+    Não repete em 429/5xx: seria pagar a mesma pergunta duas vezes."""
+    def _post(sys_):
+        return requests.post(GW_URL + '/v1/messages', headers=_gw_headers(),
+                             json={'model': model, 'max_tokens': max_tokens,
+                                   'system': sys_, 'messages': msgs}, timeout=300)
+    r = _post(system)
+    if r.status_code in (400, 422) and isinstance(system, list):
+        print('[llm] gateway recusou system em blocos (%s) - sem prompt caching, achatando'
+              % r.status_code, flush=True)
+        r = _post('\n\n'.join(b['text'] for b in system))
+    r.raise_for_status()
+    return ''.join(b.get('text', '') for b in r.json().get('content', []))
 
 def llm(system, user, max_tokens=8000, model=None):
     r = requests.post(GW_URL + '/v1/messages',
@@ -535,43 +563,73 @@ def contexto_para_chat(empresa_slug=None, area_slug=None):
     return ('\n\n'.join(partes))[:150000]
 
 # ---------- 4 PERSONA / CHAT ----------
-def chat(pergunta, historico, empresa_slug=None, area_slug=None, advisor_slug=None):
+def _auditar_ids_texto(txt, validos):
+    """Mesmo defeito que o playbook tinha: o LLM troca UM caractere do videoId e o link morre.
+    Só mexe em id dentro de crase ou de URL do YouTube — nunca em palavra solta, porque
+    português tem palavra de 11 letras ('arquitetura', 'crescimento')."""
+    if not validos or not txt:
+        return txt
+    def troca(m):
+        vid = m.group(1)
+        if vid in validos:
+            return m.group(0)
+        cand = [v for v in validos if sum(a != b for a, b in zip(v, vid)) == 1]
+        return m.group(0).replace(vid, cand[0]) if len(cand) == 1 else m.group(0)
+    txt = re.sub(r'`([A-Za-z0-9_-]{11})`', troca, txt)
+    return re.sub(r'watch\?v=([A-Za-z0-9_-]{11})', troca, txt)
+
+CHAT_FECHO = ("Responda como o advisor: direto, provocador, com plano de ação e a conta feita. "
+              "Use o contexto da empresa quando existir - a orientação deve ser específica pro negócio. "
+              "Cite a fonte dos princípios que usar: o código do módulo e o videoId entre crases, "
+              "copiado EXATAMENTE como está na doutrina. Não cite o que não estiver lá; se a doutrina "
+              "for fina no ponto perguntado, diga que é lacuna do acervo em vez de preencher.")
+
+def chat(pergunta, historico, empresa_slug=None, area_slug=None, advisor_slug=None, model=None):
+    """Responde pela DOUTRINA do advisor. doutrina() já cai na mente sozinho quando o advisor
+    ainda não tem doutrina curada — então advisor novo não quebra a mesa."""
     aslug = advisor_slug if (advisor_slug and any(x['slug'] == advisor_slug for x in advisors())) else adv_slug()
-    persona = ler(pd(aslug, 'mente', 'persona.md'))
-    mente = '\n\n'.join(ler(f) for f in sorted(glob.glob(pd(aslug, 'mente', '*.md'))) if not f.endswith('persona.md'))
+    estatico = (ler(pd(aslug, 'mente', 'persona.md')) +
+                '\n\n=== DOUTRINA (a base de conhecimento) ===\n' + doutrina(aslug))
     ctx = contexto_para_chat(empresa_slug, area_slug)
-    sys = persona + '\n\n=== BASE DE CONHECIMENTO (a mente) ===\n' + mente + \
-          (('\n\n=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n' + ctx) if ctx else '') + \
-          '\n\nResponda como o advisor: direto, provocador, com plano de ação e a conta feita. Use o contexto da empresa quando existir — a orientação deve ser específica pro negócio. Cite os vídeos-fonte (nome + link) dos princípios que usar.'
+    dinamico = (('=== CONTEXTO DA EMPRESA (use e cite a área de origem quando relevante) ===\n'
+                 + ctx + '\n\n') if ctx.strip() else '') + CHAT_FECHO
     msgs = historico[-8:] + [{'role': 'user', 'content': pergunta}]
-    r = requests.post(GW_URL + '/v1/messages',
-        headers=_gw_headers(),
-        json={'model': MODEL, 'max_tokens': 3000, 'system': sys, 'messages': msgs}, timeout=180)
-    r.raise_for_status()
-    return ''.join(b.get('text', '') for b in r.json().get('content', []))
+    return _chamar(model or MODEL, _sys_blocos(estatico, dinamico), msgs, 3000)
 
 # ---------- MESA REDONDA: vários advisors opinam + moderador sintetiza ----------
 MESA_SYS = """Você é o MODERADOR de uma mesa redonda de conselheiros de negócios. Recebeu o parecer INDEPENDENTE de cada advisor sobre a MESMA pergunta do empresário.
 Entregue UM conselho unificado da mesa, em português, nesta estrutura EXATA (use os títulos):
-**Consenso** — os pontos em que os conselheiros concordam.
-**Divergências** — onde discordam e por quê (diga qual advisor defende cada lado).
-**Plano de ação da mesa** — os passos concretos recomendados, com a conta feita quando houver números.
-Regras: não invente; use só o que os pareceres trazem. Seja direto e específico; sintetize, não repita cada parecer por extenso."""
+
+**Diagnóstico** — o que a mesa entendeu do problema, em poucas linhas.
+
+**O que cada conselheiro contribui** — um parágrafo por conselheiro, nomeando-o: qual é o ângulo dele e que parte do problema é dele. Se um conselheiro não tem o que dizer sobre este caso, diga isso em vez de inventar participação para ele.
+
+**Onde discordam** — a parte mais valiosa: diga qual conselheiro defende cada lado e por quê. Se realmente não houver divergência, escreva uma linha dizendo que a mesa foi unânime — não fabrique conflito.
+
+**Plano de ação da mesa** — passos concretos, cada um com dono, número e prazo, na ordem de execução. Faça a conta quando os pareceres trouxerem números.
+
+**O que falta saber** — os números ou fatos que a mesa precisa do empresário para o conselho ficar de pé, em forma de perguntas.
+
+Regras: não invente; use só o que os pareceres trazem. Preserve os videoIds entre crases exatamente como aparecem nos pareceres — não reescreva nenhum caractere. Quando um parecer disser que o assunto é lacuna do acervo, mantenha esse aviso. Seja direto e específico; sintetize, não repita cada parecer por extenso."""
 
 def mesa(pergunta, historico, slugs, empresa_slug=None, area_slug=None):
     """Cada advisor responde pela mente dele (reusa chat); depois o moderador costura o conselho da mesa."""
     validos = [s for s in slugs if any(x['slug'] == s for x in advisors())]
-    pareceres = []
+    pareceres, ids = [], set()
     for s in validos:
         nome = next((a['nome'] for a in advisors() if a['slug'] == s), s)
         try:
-            resp = chat(pergunta, historico, empresa_slug, area_slug, s)
+            validos_s = _ids_reais(s)
+            ids |= validos_s
+            resp = _auditar_ids_texto(chat(pergunta, historico, empresa_slug, area_slug, s,
+                                           model=MODEL_PARECER), validos_s)
         except Exception as e:
             resp = '(não consegui o parecer: %s)' % e
         pareceres.append({'slug': s, 'nome': nome, 'resposta': resp})
     corpo = '\n\n'.join('### Parecer de %s\n%s' % (pp['nome'], pp['resposta']) for pp in pareceres)
     sintese = llm(MESA_SYS, 'PERGUNTA DO EMPRESÁRIO:\n%s\n\nPARECERES DA MESA:\n%s' % (pergunta, corpo), 3000, MODEL)
-    return pareceres, sintese
+    # o moderador reescreve texto — e às vezes o videoId junto; audita de novo na saída
+    return pareceres, _auditar_ids_texto(sintese, ids)
 
 # ---------- API ----------
 @app.route('/api/estado')
