@@ -1301,6 +1301,21 @@ def montar_playbook(segmento, empresa_slug=None, area_slug=None, advisor_slug=No
 def _pb_nome(titulo):
     return '%s-%s.html' % (datetime.datetime.now().strftime('%Y%m%d-%H%M'), _slug(titulo))
 
+def _semear_doutrina():
+    """Se o volume ja estava semeado, o copytree do boot nao traz doutrina.md nova.
+    Este seed e idempotente: so copia do repo pro volume quando ainda nao existe la."""
+    if DATA == _SEED:
+        return
+    for a in advisors():
+        slug = a.get('slug', '')
+        origem = os.path.join(_SEED, 'advisors', slug, DOUTRINA_ARQ)
+        alvo = pd(slug, DOUTRINA_ARQ)
+        if os.path.exists(origem) and not os.path.exists(alvo):
+            gravar(alvo, ler(origem))
+            print('[boot] doutrina semeada: %s (%d chars)' % (slug, len(ler(alvo))), flush=True)
+
+_semear_doutrina()
+
 @app.route('/api/doutrina', methods=['GET', 'POST'])
 def api_doutrina():
     """GET  /api/doutrina?advisor=slug   -> {slug, chars, texto}
