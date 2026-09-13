@@ -1244,6 +1244,8 @@ th,td{border:1px solid #2a2d38;padding:10px 13px;vertical-align:top}
 .lacuna::before{content:'AQUI A DOUTRINA É FINA';display:block;color:#d1737f;font-size:11px;letter-spacing:.13em;font-weight:800;margin-bottom:8px}
 .fonte{display:inline-block;background:#181a21;border:1px solid #2a2d38;color:#8b8e98;font-size:11px;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 8px;border-radius:6px;margin-left:5px;white-space:nowrap}
+.fonte.suspeita{border-color:#7a3a44;color:#d1737f}
+.fonte.suspeita::after{content:" ?"}
 .rodape{margin-top:70px;border-top:1px solid #2a2d38;padding-top:22px;color:#6c6f7a;font-size:12px;line-height:1.7}
 @media(max-width:600px){.wrap{padding:30px 16px 70px}}"""
 
@@ -1262,6 +1264,45 @@ def _nvideos(slug):
         return len(json.loads(ler(pd(slug, 'consolidado.json')) or '[]'))
     except Exception:
         return 0
+
+def _ids_reais(slug):
+    """Os videoIds que realmente existem na base do advisor (consolidados + transcritos)."""
+    ids = set()
+    # 1) a DOUTRINA e a fonte de verdade: e o texto que o modelo leu pra citar
+    ids |= set(re.findall(r'`([A-Za-z0-9_-]{11})`', doutrina(slug)))
+    # 2) reforca com o que existe de fato na base do advisor
+    try:
+        ids |= set(json.loads(ler(pd(slug, 'consolidado.json')) or '[]'))
+    except Exception:
+        pass
+    ids |= {os.path.basename(f)[:-4] for f in glob.glob(pd(slug, 'transcricoes', '*.txt'))}
+    return {i for i in ids if len(i) == 11}
+
+def _auditar_fontes(html, validos):
+    """O LLM as vezes corrompe 1 caractere do videoId (enL6... -> enLG...), o que
+    quebra o link e cria rastreabilidade falsa. Corrige quando ha UM unico candidato
+    a distancia 1; marca como suspeita quando nao da pra ter certeza."""
+    corrigidos, suspeitos = [], []
+    if not validos:
+        return html, corrigidos, suspeitos
+
+    def troca(m):
+        miolo = m.group(2)
+        achado = re.search(r'[A-Za-z0-9_-]{11}', miolo)
+        if not achado:
+            return m.group(0)
+        vid = achado.group(0)
+        if vid in validos:
+            return m.group(0)
+        cand = [v for v in validos if sum(a != b for a, b in zip(v, vid)) == 1]
+        if len(cand) == 1:
+            corrigidos.append('%s->%s' % (vid, cand[0]))
+            return m.group(1) + miolo.replace(vid, cand[0]) + m.group(3)
+        suspeitos.append(vid)
+        return '<span class="fonte suspeita">' + miolo + m.group(3)
+
+    html = re.sub(r'(<span class="fonte">)(.*?)(</span>)', troca, html, flags=re.S)
+    return html, corrigidos, suspeitos
 
 def montar_playbook(segmento, empresa_slug=None, area_slug=None, advisor_slug=None,
                     perguntas='', titulo=''):
@@ -1289,6 +1330,11 @@ def montar_playbook(segmento, empresa_slug=None, area_slug=None, advisor_slug=No
     corpo = llm(PLAYBOOK_SYS % {'nome': adv['nome']}, '\n'.join(user),
                 max_tokens=16000, model=MODEL)
     corpo = re.sub(r'^\s*```(?:html)?\s*|\s*```\s*$', '', corpo.strip())
+    corpo, corrigidos, suspeitos = _auditar_fontes(corpo, _ids_reais(aslug))
+    if corrigidos:
+        log('playbook: videoId corrigido -> %s' % ', '.join(corrigidos))
+    if suspeitos:
+        log('playbook: videoId SUSPEITO (marcado no HTML) -> %s' % ', '.join(suspeitos))
 
     tit = titulo.strip() or ('Playbook — ' + (emp_nome or segmento))
     sub = ' · '.join(x for x in [emp_nome, segmento] if x)
@@ -1296,7 +1342,7 @@ def montar_playbook(segmento, empresa_slug=None, area_slug=None, advisor_slug=No
                           'nome': adv['nome'], 'chars': '{:,}'.format(len(dout)).replace(',', '.'),
                           'nvideos': _nvideos(aslug),
                           'carimbo': datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
-    return doc, aslug, tit
+    return doc, aslug, tit, corrigidos, suspeitos
 
 def _pb_nome(titulo):
     return '%s-%s.html' % (datetime.datetime.now().strftime('%Y%m%d-%H%M'), _slug(titulo))
@@ -1341,7 +1387,7 @@ def api_playbook():
     if not seg:
         return jsonify({'erro': 'informe o segmento'}), 400
     try:
-        html, aslug, tit = montar_playbook(
+        html, aslug, tit, corrigidos, suspeitos = montar_playbook(
             seg, d.get('empresa'), d.get('area'), d.get('advisor'),
             d.get('perguntas', ''), d.get('titulo', ''))
     except Exception as e:
@@ -1353,7 +1399,8 @@ def api_playbook():
         gravar(pd(aslug, PLAYBOOKS_DIR, arq), html)
         log('playbook gerado: %s' % arq)
     return jsonify({'ok': True, 'arquivo': arq, 'url': ('/api/playbook/' + arq) if arq else '',
-                    'chars': len(html), 'html': html})
+                    'chars': len(html), 'html': html,
+                    'fontes_corrigidas': corrigidos, 'fontes_suspeitas': suspeitos})
 
 @app.route('/api/playbooks')
 def api_playbooks():
