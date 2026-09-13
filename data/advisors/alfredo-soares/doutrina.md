@@ -189,6 +189,76 @@ longa, *"se você ficar dois anos, não é bônus: você tem a chance de me comp
 **Equity por ACESSO** — `0NQh2UgG3ug`: *"a gente está disposto a dar equity para quem chega e fala: eu não
 vou meter a mão nessa caneta, mas vou te conectar com as pessoas certas."* Priorizar quem abre porta.
 
+### M0.3.5 — AS 9 ARQUITETURAS DE MONETIZAÇÃO (o mapa das famílias)
+
+> **Nota de autoria.** Os modelos e os veredictos abaixo são dele (M0.3.2 é a tabela-fonte).
+> **O agrupamento em 9 famílias é arranjo deste catálogo** — ele nunca listou assim. Serve para
+> diagnosticar rápido em que família a empresa está hoje e para quais ela pode subir.
+
+**A regra que governa a escolha** — `b2Fur8D7zQw`: *"só vale ganhar dinheiro com o que é
+EXPONENCIAL. Fora isso, é serviço."* E o filtro antes de abrir linha nova — `qkUhJVtfy90`:
+**esforço × retorno × POTENCIAL.**
+
+| # | Família | O que o cliente está pagando | Como cresce | Veredicto dele |
+|---|---|---|---|---|
+| 1 | **Trabalho** | horas, posts, visitas, unidades de esforço | linear com gente | ❌ teto baixo; é o que ele manda trocar — `hI6Xky9zaRg` |
+| 2 | **Produto / transação** | a unidade vendida | linear com volume | neutro; vira commodity |
+| 3 | **Recorrência** | acesso continuado | linear com base | ⚠️ depende do formato (ver abaixo) |
+| 4 | **Consumo / uso** | o volume consumido | com o uso do cliente | ⚠️ *"mais acesso ≠ mais venda"* — `YcAsGGnYwcU` |
+| 5 | **Performance** | o resultado atribuído | **com o crescimento do cliente** | ✅ a tese central |
+| 6 | **Capital** | participação futura | com o valuation | ✅ sem caixa e sem diluição hoje |
+| 7 | **Float** | o dinheiro dos outros | com o ciclo financeiro | ✅ risco livre |
+| 8 | **Rede** | o direito de operar seu modelo | com unidades de terceiros | ✅ cresce por dentro |
+| 9 | **Ativos de marca** | a atenção que você já construiu | sem custo marginal | ✅ o teto: 13 linhas — `qkUhJVtfy90` |
+
+**Família 3 — Recorrência (os quatro formatos, com o veredicto de cada um)**
+- Mensalidade/SaaS: *"depende só de adicionar cliente"* — `YcAsGGnYwcU`
+- Assinatura de produto físico: ⚠️ **não funciona no Brasil** — *"você é mais uma empresa
+  financeira do que de produto"* — `5pX265p-NoY`
+- **Pacote 3/6/12 meses** (o substituto): *"você se livrou de nove logísticas"* — `5pX265p-NoY`
+- **Anual com o mensal mais caro**: *"não é dar desconto, é subir o mensal"* + float — `JPrCJY8iSGw`
+
+**Família 5 — Performance (a escada dentro da família)**
+1. Fixo + bônus por faixa — `hI6Xky9zaRg`
+2. **Revenue share** (o modelo VTEX): quanto mais o cliente vende, mais você ganha — `YcAsGGnYwcU`
+3. **Take rate** sobre tudo que o cliente transaciona — `b2Fur8D7zQw`
+4. **Brand-for-CAC**: *"pego 50% da redução que eu gero"* — ~40 mi/ano no G4 Tools — `YcAsGGnYwcU`
+→ O que todas têm em comum é o passo 4 da fórmula (M0.3.1): **o modelo ATRIBUI o resultado à
+remuneração.** Sem atribuição, serviço é trabalho (família 1).
+
+**Família 6 — Capital**: call de equity no valuation de hoje com gatilho de marco (`1ta_WwFeYOw`);
+**"desconto for equity" SIM, media for equity NÃO** (`5pX265p-NoY`); equity por ACESSO, para quem
+abre porta (`0NQh2UgG3ug`); **dívida com garantia real** em vez de sociedade no ativo (`i2wwoYueX0Y`).
+
+**Família 7 — Float**: crédito pré-pago — *"funciona como banco, é risco livre"* (`0NQh2UgG3ug`),
+versão salão (`DCLeyRdzHIg`); anual antecipado (`JPrCJY8iSGw`); **permuta** — ~10 mi/ano no G4
+(`tw0f5qYY7DQ`).
+
+**Família 8 — Rede**: franquia vendida à base que já performa — 12 unidades em um dia (`1ta_WwFeYOw`);
+**produto vendido à própria rede** — R$ 1.000 × 80 unidades = 80 mil/mês (`1ta_WwFeYOw`); parceria de
+canal na **regra dos 20–30%** (M6.1); marketplace/comissão — *"só dá dinheiro se escalar"* (`YcAsGGnYwcU`).
+
+**Família 9 — Ativos de marca**: patrocínio e digital assets como as duas maiores linhas da FURIA
+(`qkUhJVtfy90`); marca agnóstica e segunda marca (M3.7); páginas por ícone (`FClEAvG4NHU`).
+
+#### Duas arquiteturas que só aparecem no livro — `KxCoAB-1MYY`
+
+**A) O LEAD NÃO CONVERTIDO COMO PRODUTO (família 9, e é a mais subestimada).**
+A XTech recebia 30–40 oportunidades por dia e convertia 5–10. Em vez de descartar o resto, passou a
+**vender o lead não convertido ao próprio ecossistema de parceiros** por metade do que o parceiro
+gastaria na mídia — e entregando contato mais qualificado, porque o lead já tinha sido trabalhado com
+conteúdo. O raciocínio que destrava: **o lead é ativo da empresa, não sobra.** O dinheiro do lead
+morto voltava para comprar mais lead, que gerava mais lead morto — **funil que se financia sozinho.**
+→ Pergunta de diagnóstico: *quantos leads a sua operação descarta por mês, e quem no seu ecossistema
+pagaria por eles?*
+
+**B) O PALESTRANTE COMO PONTO DE VENDA COM FEE (família 8).**
+Ele começou a palestrar e mediu que gerava lead; então **transformou palestrantes em canal**: mais de
+50 deles, com **fee mensal**, medidos por ROI individual, cada um operando *como uma loja física da
+plataforma online*. O critério não é audiência, é **proximidade com o cliente-alvo** (contadores,
+gente de conteúdo do segmento). Muitas vezes rendia mais lead que banner em blog de 1 milhão de
+visitas/mês. → É a versão remunerada e mensurada do PORTA-VOZ POR SEGMENTO (M3.7).
+
 ## M0.4 — A ESCADA DO MERCADO (onde está o valor hoje)
 
 > **te ensino como PENSA → te ensino como FAZ → FAÇO JUNTO → FAÇO POR VOCÊ** — `hI420d6Fpyc`
